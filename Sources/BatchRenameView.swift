@@ -136,16 +136,22 @@ struct BatchRenameView: View {
     private var faceReviewView: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Review detected faces")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review detected faces")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("\(uniqueIdentifiedNames.count) people identified across \(items.count) photos")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
                 Spacer()
-                Text("\(uniqueIdentifiedNames.count) people found")
-                    .font(.callout)
-                Button("Continue to Naming") {
+                Button {
                     buildReferencesAndGenerate()
+                } label: {
+                    Label("Continue to Naming", systemImage: "sparkles")
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
             .padding(.horizontal)
 
@@ -162,40 +168,51 @@ struct BatchRenameView: View {
 
             // Show reference photos that will be used
             if !references.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(references) { ref in
-                            VStack {
-                                if let nsImage = NSImage(data: ref.imageData) {
-                                    Image(nsImage: nsImage)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 60, height: 60)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Reference photos")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(references) { ref in
+                                VStack(spacing: 4) {
+                                    if let nsImage = NSImage(data: ref.imageData) {
+                                        Image(nsImage: nsImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 56, height: 56)
+                                            .clipShape(Circle())
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(Color.green.opacity(0.4), lineWidth: 2)
+                                            )
+                                            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                                    }
+                                    Text(ref.name)
+                                        .font(.caption2)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.secondary)
                                 }
-                                Text(ref.name)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
                             }
                         }
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                 }
             }
 
-            // Scrollable grid of photos with face results
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200))], spacing: 16) {
-                    ForEach($items) { $item in
-                        BatchFaceCard(
-                            item: $item,
-                            faceManager: faceManager,
-                            albumPath: album.fullPath
-                        )
-                    }
+            // List of photos with face results (List uses NSTableView — clicks always work)
+            List {
+                ForEach($items) { $item in
+                    BatchFaceRow(
+                        item: $item,
+                        faceManager: faceManager,
+                        albumPath: album.fullPath
+                    )
                 }
-                .padding()
             }
+            .listStyle(.plain)
         }
     }
 
@@ -281,25 +298,48 @@ struct BatchRenameView: View {
         phase = .scanning
         progress = 0
 
-        Task {
+        // Capture everything needed before detaching from MainActor
+        let piwigoRef = piwigo
+        let faceManagerRef = faceManager
+        let albumID = album.id
+        let albumPath = album.fullPath
+        let needsFetch = allImages.isEmpty
+        let batchIdx = currentBatchIndex
+        let batchSz = batchSize
+
+        Task.detached {
             do {
                 // Fetch full image list on first batch
-                if allImages.isEmpty {
-                    progressMessage = "Fetching photo list..."
-                    allImages = try await piwigo.fetchImages(albumID: album.id, perPage: 500)
+                var fetchedImages: [PiwigoImage] = []
+                if needsFetch {
+                    await MainActor.run {
+                        self.progressMessage = "Fetching photo list..."
+                    }
+                    fetchedImages = try await piwigoRef.fetchAllImages(albumID: albumID) { count in
+                        Task { @MainActor in
+                            self.progressMessage = "Fetching photo list... \(count) found"
+                        }
+                    }
+                    await MainActor.run {
+                        self.allImages = fetchedImages
+                        self.progressMessage = "Fetching photo list... \(fetchedImages.count) photos"
+                    }
                 }
 
-                let batchImages = currentBatchImages
-                let batchOffset = currentBatchIndex * batchSize
-                let totalAll = allImages.count
-                let albumPath = album.fullPath
-                let piwigoRef = piwigo
-                let faceManagerRef = faceManager
-                let maxConcurrentScan = 10
+                let (batchImages, batchOffset, totalAll): ([PiwigoImage], Int, Int) = await MainActor.run {
+                    let start = batchIdx * batchSz
+                    let end = min(start + batchSz, self.allImages.count)
+                    let slice = start < self.allImages.count ? Array(self.allImages[start..<end]) : []
+                    return (slice, batchIdx * batchSz, self.allImages.count)
+                }
 
+                await MainActor.run {
+                    self.progressMessage = "Scanning 0/\(totalAll)..."
+                }
+
+                let maxConcurrentScan = 10
                 let scanInputs = batchImages.enumerated().map { ScanInput(index: $0.offset, image: $0.element) }
 
-                // Results collected here
                 var batchItems: [BatchPhotoItem] = batchImages.map {
                     BatchPhotoItem(id: $0.id, image: $0)
                 }
@@ -309,7 +349,6 @@ struct BatchRenameView: View {
                 await withTaskGroup(of: (Int, Data?, Data?, Date?, String?, [DetectedFace]).self) { group in
                     var nextIdx = 0
 
-                    // Seed initial concurrent tasks
                     for _ in 0..<min(maxConcurrentScan, scanInputs.count) {
                         let input = scanInputs[nextIdx]
                         nextIdx += 1
@@ -332,8 +371,8 @@ struct BatchRenameView: View {
                         completed += 1
                         let globalDone = batchOffset + completed
                         await MainActor.run {
-                            progress = Double(completed) / total
-                            progressMessage = "Scanned \(globalDone)/\(totalAll)..."
+                            self.progress = Double(completed) / total
+                            self.progressMessage = "Scanned \(globalDone)/\(totalAll)..."
                         }
 
                         if nextIdx < scanInputs.count {
@@ -349,16 +388,17 @@ struct BatchRenameView: View {
                     }
                 }
 
+                let finalItems = batchItems
                 await MainActor.run {
-                    items = batchItems
-                    progress = 1.0
-                    buildInitialReferences()
-                    phase = .faceReview
+                    self.items = finalItems
+                    self.progress = 1.0
+                    self.buildInitialReferences()
+                    self.phase = .faceReview
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    phase = .idle
+                    self.errorMessage = error.localizedDescription
+                    self.phase = .idle
                 }
             }
         }
@@ -413,32 +453,35 @@ struct BatchRenameView: View {
         progress = 0
         progressMessage = "Naming 0/\(items.count)..."
 
-        Task {
-            let claude = ClaudeClient(apiKey: claudeAPIKey)
-            let total = items.count
-            let refs = references.map {
-                ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
-            }
-            let batchOffset = currentBatchIndex * batchSize
-            let maxConcurrent = 20
+        // Capture everything needed before detaching from MainActor
+        let apiKey = claudeAPIKey
+        let refs = references.map {
+            ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
+        }
+        let batchOffset = currentBatchIndex * batchSize
+        let albumPath = album.fullPath
+        let renamedSoFar = totalRenamed
+        let totalImages = allImages.count
+        let notes = userNotes.trimmingCharacters(in: .whitespaces)
 
-            // Snapshot item data before entering task group
-            let inputs: [ItemInput] = items.indices.compactMap { i in
-                guard let data = items[i].displayData else { return nil }
-                let notes = userNotes.trimmingCharacters(in: .whitespaces)
-                return ItemInput(index: i, data: data, names: items[i].identifiedNames, photoDate: items[i].photoDate, photoLocation: items[i].photoLocation, userNotes: notes.isEmpty ? nil : notes)
-            }
+        let inputs: [ItemInput] = items.indices.compactMap { i in
+            guard let data = items[i].displayData else { return nil }
+            return ItemInput(index: i, data: data, names: items[i].identifiedNames, photoDate: items[i].photoDate, photoLocation: items[i].photoLocation, userNotes: notes.isEmpty ? nil : notes)
+        }
 
+        Task.detached {
+            let claude = ClaudeClient(apiKey: apiKey)
+            let total = inputs.count
+            let maxConcurrent = 10
             var completed = 0
+
+            var results: [(Int, String)] = []
 
             await withTaskGroup(of: (Int, String).self) { group in
                 var nextInputIdx = 0
 
-                // Seed initial concurrent tasks
                 for _ in 0..<min(maxConcurrent, inputs.count) {
                     let input = inputs[nextInputIdx]
-                    let albumPath = album.fullPath
-                    let renamedSoFar = totalRenamed
                     nextInputIdx += 1
 
                     group.addTask {
@@ -449,20 +492,18 @@ struct BatchRenameView: View {
                     }
                 }
 
-                // As each completes, update UI and add the next
                 for await (index, result) in group {
+                    results.append((index, result))
                     completed += 1
                     let globalDone = batchOffset + completed
                     await MainActor.run {
-                        items[index].suggestedName = result
-                        progress = Double(completed) / Double(total)
-                        progressMessage = "Named \(globalDone)/\(allImages.count)..."
+                        self.items[index].suggestedName = result
+                        self.progress = Double(completed) / Double(total)
+                        self.progressMessage = "Named \(globalDone)/\(totalImages)..."
                     }
 
                     if nextInputIdx < inputs.count {
                         let input = inputs[nextInputIdx]
-                        let albumPath = album.fullPath
-                        let renamedSoFar = totalRenamed
                         nextInputIdx += 1
 
                         group.addTask {
@@ -476,8 +517,8 @@ struct BatchRenameView: View {
             }
 
             await MainActor.run {
-                progress = 1.0
-                phase = .review
+                self.progress = 1.0
+                self.phase = .review
             }
         }
     }
@@ -545,7 +586,7 @@ struct BatchRenameView: View {
         albumPath: String,
         renamedSoFar: Int
     ) async -> (Int, String) {
-        let maxRetries = 3
+        let maxRetries = 5
         var lastError: Error?
 
         for attempt in 1...maxRetries {
@@ -585,45 +626,48 @@ struct BatchRenameView: View {
         progress = 0
         progressMessage = "Applying renames..."
 
-        Task {
-            let total = Double(selected.count)
+        let piwigoRef = piwigo
+        let renameItems = selected.map { (id: $0.id, name: $0.suggestedName) }
+
+        Task.detached {
+            let total = Double(renameItems.count)
             var failed = 0
 
-            for (i, item) in selected.enumerated() {
+            for (i, item) in renameItems.enumerated() {
                 await MainActor.run {
-                    progress = Double(i) / total
-                    progressMessage = "Renaming \(i + 1)/\(Int(total))..."
+                    self.progress = Double(i) / total
+                    self.progressMessage = "Renaming \(i + 1)/\(Int(total))..."
                 }
 
                 do {
-                    try await piwigo.renameImage(imageID: item.id, newName: item.suggestedName)
+                    try await piwigoRef.renameImage(imageID: item.id, newName: item.name)
                 } catch {
                     failed += 1
                 }
             }
 
-            let renamed = selected.count - failed
+            let renamed = renameItems.count - failed
 
             await MainActor.run {
-                totalRenamed += renamed
-                progress = 1.0
+                self.totalRenamed += renamed
+                self.progress = 1.0
 
                 if failed > 0 {
-                    errorMessage = "\(renamed) renamed, \(failed) failed"
+                    self.errorMessage = "\(renamed) renamed, \(failed) failed"
                 }
 
                 // Advance to next batch or finish
-                let nextBatch = currentBatchIndex + 1
-                if nextBatch < totalBatches {
-                    currentBatchIndex = nextBatch
-                    items = []
-                    references = []
-                    errorMessage = nil
-                    progressMessage = "Batch \(currentBatchIndex) done. Starting next batch..."
-                    startScanning()
+                let nextBatch = self.currentBatchIndex + 1
+                if nextBatch < self.totalBatches {
+                    self.currentBatchIndex = nextBatch
+                    self.items = []
+                    self.references = []
+                    self.errorMessage = nil
+                    self.progressMessage = "Batch \(self.currentBatchIndex) done. Starting next batch..."
+                    self.startScanning()
                 } else {
-                    progressMessage = "Done! \(totalRenamed) photos renamed across \(totalBatches) batch\(totalBatches == 1 ? "" : "es")."
-                    onDone()
+                    self.progressMessage = "Done! \(self.totalRenamed) photos renamed across \(self.totalBatches) batch\(self.totalBatches == 1 ? "" : "es")."
+                    self.onDone()
                 }
             }
         }
@@ -632,50 +676,73 @@ struct BatchRenameView: View {
 
 // MARK: - Face card for batch review
 
-struct BatchFaceCard: View {
+struct BatchFaceRow: View {
     @Binding var item: BatchPhotoItem
     @ObservedObject var faceManager: FaceManager
     let albumPath: String
 
+    private var allIdentified: Bool {
+        !item.detectedFaces.isEmpty && item.detectedFaces.allSatisfy { $0.matchedName != nil }
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
-            // Thumbnail
-            if let data = item.displayData, let nsImage = NSImage(data: data) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 120)
-                    .clipped()
-                    .cornerRadius(6)
+        HStack(spacing: 12) {
+            // Thumbnail with status indicator
+            ZStack(alignment: .bottomTrailing) {
+                if let data = item.displayData, let nsImage = NSImage(data: data) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 90, height: 90)
+                        .clipped()
+                        .cornerRadius(8)
+                        .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+                }
+
+                // Status badge
+                if allIdentified {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.green)
+                        .background(Circle().fill(.white).padding(2))
+                        .offset(x: 4, y: 4)
+                } else if item.detectedFaces.contains(where: { $0.matchedName == nil }) {
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.orange)
+                        .background(Circle().fill(.white).padding(2))
+                        .offset(x: 4, y: 4)
+                }
             }
 
-            Text(item.image.displayName)
-                .font(.caption)
-                .lineLimit(2)
-                .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.image.displayName)
+                    .font(.system(.callout, design: .default, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            // Detected faces - interactive
-            if item.detectedFaces.isEmpty {
-                Text("No faces")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else {
-                HStack(spacing: 6) {
-                    ForEach(Array(item.detectedFaces.enumerated()), id: \.element.id) { idx, face in
-                        BatchFaceChip(
-                            face: face,
-                            faceManager: faceManager,
-                            onLabeled: { name in
-                                labelFace(at: idx, name: name)
-                            }
-                        )
+                if item.detectedFaces.isEmpty {
+                    Label("No faces detected", systemImage: "person.slash")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 6) {
+                        ForEach(Array(item.detectedFaces.enumerated()), id: \.element.id) { idx, face in
+                            BatchFaceChip(
+                                face: face,
+                                faceManager: faceManager,
+                                onLabeled: { name in
+                                    labelFace(at: idx, name: name)
+                                }
+                            )
+                        }
                     }
                 }
             }
+
+            Spacer()
         }
-        .padding(8)
-        .background(Color.gray.opacity(0.05))
-        .cornerRadius(8)
+        .padding(.vertical, 6)
     }
 
     private func labelFace(at index: Int, name: String) {
@@ -697,7 +764,7 @@ struct BatchFaceChip: View {
     @ObservedObject var faceManager: FaceManager
     var onLabeled: (String) -> Void
 
-    @State private var isLabeling = false
+    @State private var showNewName = false
     @State private var newName = ""
 
     var body: some View {
@@ -711,78 +778,57 @@ struct BatchFaceChip: View {
                     Circle()
                         .stroke(face.matchedName != nil ? Color.green : Color.orange, lineWidth: 2)
                 )
-                .onTapGesture {
-                    if face.matchedName == nil {
-                        isLabeling = true
-                    }
-                }
-                .popover(isPresented: $isLabeling) {
-                    VStack(spacing: 8) {
-                        Text("Label Face")
-                            .font(.headline)
-
-                        TextField("Enter name", text: $newName)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 180)
-                            .onSubmit { submitLabel() }
-
-                        if !faceManager.knownNames.isEmpty {
-                            Divider()
-                            Text("Known people:")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            ScrollView {
-                                VStack(spacing: 2) {
-                                    ForEach(faceManager.knownNames, id: \.self) { name in
-                                        Button {
-                                            newName = name
-                                            submitLabel()
-                                        } label: {
-                                            Text(name)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                                .padding(.vertical, 4)
-                                                .padding(.horizontal, 8)
-                                                .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                            .frame(maxHeight: 150)
-                        }
-
-                        HStack {
-                            Button("Cancel") {
-                                isLabeling = false
-                                newName = ""
-                            }
-                            Button("Save") { submitLabel() }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
-                    .padding()
-                    .frame(minWidth: 200)
-                }
 
             if let name = face.matchedName {
                 Text(name)
-                    .font(.system(size: 9))
+                    .font(.caption)
                     .foregroundStyle(.green)
                     .lineLimit(1)
             } else {
-                Text("?")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.orange)
+                Menu {
+                    ForEach(faceManager.knownNames, id: \.self) { name in
+                        Button(name) { onLabeled(name) }
+                    }
+                    if !faceManager.knownNames.isEmpty {
+                        Divider()
+                    }
+                    Button("New name...") { showNewName = true }
+                } label: {
+                    Text("Label")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                .menuStyle(.button)
+                .fixedSize()
             }
+        }
+        .popover(isPresented: $showNewName) {
+            VStack(spacing: 8) {
+                Text("New Name")
+                    .font(.headline)
+                TextField("Enter name", text: $newName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
+                    .onSubmit { submitNewName() }
+                HStack {
+                    Button("Cancel") {
+                        showNewName = false
+                        newName = ""
+                    }
+                    Button("Save") { submitNewName() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .padding()
         }
     }
 
-    private func submitLabel() {
+    private func submitNewName() {
         let name = newName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         onLabeled(name)
-        isLabeling = false
+        showNewName = false
         newName = ""
     }
 }

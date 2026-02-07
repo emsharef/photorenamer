@@ -66,7 +66,7 @@ struct AlbumBrowserView: View {
             } else {
                 VStack(spacing: 0) {
                     HStack {
-                        Text("\(images.count) photos")
+                        Text("\(selectedAlbum?.totalImages ?? images.count) photos")
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button {

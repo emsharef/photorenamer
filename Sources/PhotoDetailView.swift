@@ -202,7 +202,7 @@ struct PhotoDetailView: View {
 
         Task {
             let claude = ClaudeClient(apiKey: claudeAPIKey)
-            let maxRetries = 3
+            let maxRetries = 5
             var lastError: Error?
 
             for attempt in 1...maxRetries {

@@ -51,8 +51,9 @@ class FaceManager: ObservableObject {
     // MARK: - Face Detection
 
     func detectFaces(in imageData: Data, photoDate: Date? = nil) async throws -> [DetectedFace] {
-        guard let nsImage = NSImage(data: imageData),
-              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        // Use CGImageSource instead of NSImage to avoid AppKit main-thread requirements
+        guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             return []
         }
 

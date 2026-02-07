@@ -213,10 +213,26 @@ class PiwigoClient: ObservableObject {
         return parts.joined(separator: " / ")
     }
 
+    /// Fetch all images in an album, paginating automatically.
+    func fetchAllImages(albumID: Int, perPage: Int = 100, onProgress: ((Int) -> Void)? = nil) async throws -> [PiwigoImage] {
+        var allImages: [PiwigoImage] = []
+        var page = 0
+        let maxPages = 100 // safety cap
+        while page < maxPages {
+            let batch = try await fetchImages(albumID: albumID, page: page, perPage: perPage)
+            allImages.append(contentsOf: batch)
+            onProgress?(allImages.count)
+            if batch.count < perPage { break }
+            page += 1
+        }
+        return allImages
+    }
+
     func fetchImages(albumID: Int, page: Int = 0, perPage: Int = 50) async throws -> [PiwigoImage] {
         var request = URLRequest(url: apiURL())
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
 
         let body = "method=pwg.categories.getImages&cat_id=\(albumID)&per_page=\(perPage)&page=\(page)"
         request.httpBody = body.data(using: .utf8)
@@ -279,7 +295,8 @@ class PiwigoClient: ObservableObject {
         guard let imageURL = URL(string: url) else {
             throw PiwigoError.invalidURL
         }
-        let request = URLRequest(url: imageURL)
+        var request = URLRequest(url: imageURL)
+        request.timeoutInterval = 30
         let (data, _) = try await session.data(for: request)
         return data
     }
