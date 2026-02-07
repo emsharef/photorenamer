@@ -59,7 +59,7 @@ Sources/
 - Batch mode: sends reference photos of identified people alongside each photo, so Claude can recognize people by clothing/hair/body even without a clear face
 - Naming style: `YYYYMMDD NNN Description` (e.g., "20251112 001 Sarah and John on a boat")
 - Date prefix and sequence number are added client-side; Claude generates only the descriptive title
-- Uses `claude-sonnet-4-20250514` model
+- Uses `claude-sonnet-4-5-20250929` model
 
 ### Batch Rename Workflow
 1. **Scan**: downloads all photos, runs face detection, matches against known faces

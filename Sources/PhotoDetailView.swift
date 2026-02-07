@@ -143,6 +143,10 @@ struct PhotoDetailView: View {
         )
     }
 
+    private var photoLocation: String? {
+        FaceManager.extractPhotoLocation(imageData: hiResData ?? imageData)
+    }
+
     private func loadImage() async {
         imageData = nil
         hiResData = nil
@@ -197,24 +201,40 @@ struct PhotoDetailView: View {
         statusMessage = nil
 
         Task {
-            do {
-                let claude = ClaudeClient(apiKey: claudeAPIKey)
-                let name = try await claude.describeImage(
-                    imageData: data,
-                    peopleNames: identifiedPeople,
-                    albumPath: albumPath,
-                    photoDate: photoDate
-                )
-                await MainActor.run {
-                    suggestedName = name
-                    isAnalyzing = false
+            let claude = ClaudeClient(apiKey: claudeAPIKey)
+            let maxRetries = 3
+            var lastError: Error?
+
+            for attempt in 1...maxRetries {
+                do {
+                    let name = try await claude.describeImage(
+                        imageData: data,
+                        peopleNames: identifiedPeople,
+                        albumPath: albumPath,
+                        photoDate: photoDate,
+                        photoLocation: photoLocation
+                    )
+                    await MainActor.run {
+                        suggestedName = name
+                        isAnalyzing = false
+                    }
+                    return
+                } catch {
+                    lastError = error
+                    if attempt < maxRetries {
+                        await MainActor.run {
+                            statusMessage = "Retry \(attempt)/\(maxRetries)..."
+                            isError = false
+                        }
+                        try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                    }
                 }
-            } catch {
-                await MainActor.run {
-                    statusMessage = error.localizedDescription
-                    isError = true
-                    isAnalyzing = false
-                }
+            }
+
+            await MainActor.run {
+                statusMessage = lastError?.localizedDescription ?? "Unknown error"
+                isError = true
+                isAnalyzing = false
             }
         }
     }

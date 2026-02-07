@@ -325,6 +325,23 @@ class FaceManager: ObservableObject {
         return iso.date(from: dateStr)
     }
 
+    /// Extract GPS coordinates from EXIF data, returned as "lat, lon" string
+    static func extractPhotoLocation(imageData: Data?) -> String? {
+        guard let imageData = imageData,
+              let source = CGImageSourceCreateWithData(imageData as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let gps = properties[kCGImagePropertyGPSDictionary as String] as? [String: Any],
+              let lat = gps[kCGImagePropertyGPSLatitude as String] as? Double,
+              let latRef = gps[kCGImagePropertyGPSLatitudeRef as String] as? String,
+              let lon = gps[kCGImagePropertyGPSLongitude as String] as? Double,
+              let lonRef = gps[kCGImagePropertyGPSLongitudeRef as String] as? String
+        else { return nil }
+
+        let signedLat = latRef == "S" ? -lat : lat
+        let signedLon = lonRef == "W" ? -lon : lon
+        return String(format: "%.5f, %.5f", signedLat, signedLon)
+    }
+
     private static func yearFromAlbumPath(_ path: String) -> Date? {
         // Look for a 4-digit year (1900-2099) in the album path
         let pattern = #"\b(19\d{2}|20\d{2})\b"#

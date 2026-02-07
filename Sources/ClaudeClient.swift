@@ -12,7 +12,8 @@ class ClaudeClient {
         mimeType: String = "image/jpeg",
         peopleNames: [String] = [],
         albumPath: String? = nil,
-        photoDate: Date? = nil
+        photoDate: Date? = nil,
+        photoLocation: String? = nil
     ) async throws -> String {
         let b64 = imageData.base64EncodedString()
 
@@ -23,6 +24,9 @@ class ClaudeClient {
         }
         if let album = albumPath, !album.isEmpty {
             contextLines.append("Album location: \(album)")
+        }
+        if let location = photoLocation, !location.isEmpty {
+            contextLines.append("GPS coordinates: \(location)")
         }
 
         var datePrefix = ""
@@ -43,13 +47,15 @@ class ClaudeClient {
         activity, or scene. \
         If people's names are provided, include them naturally. \
         If the album path gives useful context (location, event, trip), incorporate it naturally. \
+        If GPS coordinates are provided, use them to identify the location and include it naturally \
+        (use the place name, not the coordinates). \
         Do NOT include a date prefix — that will be added automatically. \
         Examples: "Sarah and John on a boat", "Kids playing in the backyard", \
         "Golden Gate Bridge on a foggy morning". Just return the title, nothing else.\(contextBlock)
         """
 
         let payload: [String: Any] = [
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-5-20250929",
             "max_tokens": 200,
             "messages": [[
                 "role": "user",
@@ -112,7 +118,9 @@ class ClaudeClient {
         peopleNames: [String] = [],
         references: [PersonReference] = [],
         albumPath: String? = nil,
-        photoDate: Date? = nil
+        photoDate: Date? = nil,
+        photoLocation: String? = nil,
+        userNotes: String? = nil
     ) async throws -> String {
         let b64 = imageData.base64EncodedString()
 
@@ -123,6 +131,12 @@ class ClaudeClient {
         }
         if let album = albumPath, !album.isEmpty {
             contextLines.append("Album location: \(album)")
+        }
+        if let location = photoLocation, !location.isEmpty {
+            contextLines.append("GPS coordinates: \(location)")
+        }
+        if let notes = userNotes, !notes.isEmpty {
+            contextLines.append("User notes: \(notes)")
         }
 
         var datePrefix = ""
@@ -154,6 +168,8 @@ class ClaudeClient {
         activity, or scene. \
         If people are identified (via face recognition or reference photos), include their names naturally. \
         If the album path gives useful context (location, event, trip), incorporate it naturally. \
+        If GPS coordinates are provided, use them to identify the location and include it naturally \
+        (use the place name, not the coordinates). \
         Do NOT include a date prefix — that will be added automatically. \
         Examples: "Sarah and John on a boat", "Kids playing in the backyard", \
         "Golden Gate Bridge on a foggy morning". Just return the title, nothing else.\(referenceBlock)\(contextBlock)
@@ -200,7 +216,7 @@ class ClaudeClient {
         ])
 
         let payload: [String: Any] = [
-            "model": "claude-sonnet-4-20250514",
+            "model": "claude-sonnet-4-5-20250929",
             "max_tokens": 200,
             "messages": [[
                 "role": "user",
