@@ -42,6 +42,8 @@ struct BatchRenameView: View {
     @State private var progressMessage: String = ""
     @State private var errorMessage: String?
     @State private var userNotes: String = ""
+    @State private var retryNotes: String = ""
+    @State private var isRetrying = false
 
     // Batch pagination
     @State private var allImages: [PiwigoImage] = []
@@ -145,6 +147,11 @@ struct BatchRenameView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
+                if currentBatchIndex + 1 < totalBatches {
+                    Button("Skip to Next Batch") {
+                        skipToNextBatch()
+                    }
+                }
                 Button {
                     buildReferencesAndGenerate()
                 } label: {
@@ -230,7 +237,34 @@ struct BatchRenameView: View {
 
     private var reviewView: some View {
         VStack(spacing: 12) {
+            // Retry bar
+            HStack(spacing: 8) {
+                TextField("Additional context for retry (e.g., 'this is a birthday party')", text: $retryNotes)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.callout)
+
+                Button {
+                    retrySelected()
+                } label: {
+                    if isRetrying {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Retry Selected", systemImage: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRetrying || items.filter(\.isSelected).isEmpty)
+            }
+            .padding(.horizontal)
+
+            // Action bar
             HStack {
+                Button(items.allSatisfy(\.isSelected) ? "Select None" : "Select All") {
+                    let newValue = !items.allSatisfy(\.isSelected)
+                    for i in items.indices { items[i].isSelected = newValue }
+                }
+                .font(.callout)
+
                 Text("\(items.filter(\.isSelected).count) of \(items.count) selected")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -244,7 +278,7 @@ struct BatchRenameView: View {
                     applyRenames()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(items.filter(\.isSelected).allSatisfy { $0.suggestedName.isEmpty })
+                .disabled(isRetrying || items.filter(\.isSelected).allSatisfy { $0.suggestedName.isEmpty })
             }
             .padding(.horizontal)
 
@@ -298,110 +332,108 @@ struct BatchRenameView: View {
         phase = .scanning
         progress = 0
 
-        // Capture everything needed before detaching from MainActor
-        let piwigoRef = piwigo
-        let faceManagerRef = faceManager
-        let albumID = album.id
-        let albumPath = album.fullPath
-        let needsFetch = allImages.isEmpty
-        let batchIdx = currentBatchIndex
-        let batchSz = batchSize
-
-        Task.detached {
+        Task {
             do {
                 // Fetch full image list on first batch
-                var fetchedImages: [PiwigoImage] = []
-                if needsFetch {
-                    await MainActor.run {
-                        self.progressMessage = "Fetching photo list..."
-                    }
-                    fetchedImages = try await piwigoRef.fetchAllImages(albumID: albumID) { count in
+                if allImages.isEmpty {
+                    progressMessage = "Fetching photo list..."
+                    let fetched = try await piwigo.fetchAllImages(albumID: album.id) { count in
                         Task { @MainActor in
                             self.progressMessage = "Fetching photo list... \(count) found"
                         }
                     }
-                    await MainActor.run {
-                        self.allImages = fetchedImages
-                        self.progressMessage = "Fetching photo list... \(fetchedImages.count) photos"
-                    }
+                    allImages = fetched
+                    progressMessage = "Fetching photo list... \(fetched.count) photos"
                 }
 
-                let (batchImages, batchOffset, totalAll): ([PiwigoImage], Int, Int) = await MainActor.run {
-                    let start = batchIdx * batchSz
-                    let end = min(start + batchSz, self.allImages.count)
-                    let slice = start < self.allImages.count ? Array(self.allImages[start..<end]) : []
-                    return (slice, batchIdx * batchSz, self.allImages.count)
+                let batchImages = currentBatchImages
+                let batchOffset = currentBatchIndex * batchSize
+                let totalAll = allImages.count
+                progressMessage = "Scanning 0/\(totalAll)..."
+
+                // Run heavy scan work off MainActor via static function
+                let batchItems = await Self.runScanBatch(
+                    images: batchImages,
+                    piwigoRef: piwigo,
+                    faceManagerRef: faceManager,
+                    albumPath: album.fullPath,
+                    batchOffset: batchOffset,
+                    totalAll: totalAll
+                ) { progressVal, message in
+                    self.progress = progressVal
+                    self.progressMessage = message
                 }
 
-                await MainActor.run {
-                    self.progressMessage = "Scanning 0/\(totalAll)..."
-                }
-
-                let maxConcurrentScan = 10
-                let scanInputs = batchImages.enumerated().map { ScanInput(index: $0.offset, image: $0.element) }
-
-                var batchItems: [BatchPhotoItem] = batchImages.map {
-                    BatchPhotoItem(id: $0.id, image: $0)
-                }
-                var completed = 0
-                let total = Double(batchItems.count)
-
-                await withTaskGroup(of: (Int, Data?, Data?, Date?, String?, [DetectedFace]).self) { group in
-                    var nextIdx = 0
-
-                    for _ in 0..<min(maxConcurrentScan, scanInputs.count) {
-                        let input = scanInputs[nextIdx]
-                        nextIdx += 1
-                        group.addTask {
-                            await Self.scanOnePhoto(
-                                input: input, piwigoRef: piwigoRef,
-                                faceManagerRef: faceManagerRef, albumPath: albumPath
-                            )
-                        }
-                    }
-
-                    for await (index, hiResData, displayData, photoDate, photoLocation, faces) in group {
-                        batchItems[index].hiResData = hiResData
-                        batchItems[index].displayData = displayData
-                        batchItems[index].photoDate = photoDate
-                        batchItems[index].photoLocation = photoLocation
-                        batchItems[index].detectedFaces = faces
-                        batchItems[index].identifiedNames = faces.compactMap(\.matchedName)
-
-                        completed += 1
-                        let globalDone = batchOffset + completed
-                        await MainActor.run {
-                            self.progress = Double(completed) / total
-                            self.progressMessage = "Scanned \(globalDone)/\(totalAll)..."
-                        }
-
-                        if nextIdx < scanInputs.count {
-                            let input = scanInputs[nextIdx]
-                            nextIdx += 1
-                            group.addTask {
-                                await Self.scanOnePhoto(
-                                    input: input, piwigoRef: piwigoRef,
-                                    faceManagerRef: faceManagerRef, albumPath: albumPath
-                                )
-                            }
-                        }
-                    }
-                }
-
-                let finalItems = batchItems
-                await MainActor.run {
-                    self.items = finalItems
-                    self.progress = 1.0
-                    self.buildInitialReferences()
-                    self.phase = .faceReview
-                }
+                items = batchItems
+                progress = 1.0
+                buildInitialReferences()
+                phase = .faceReview
             } catch {
-                await MainActor.run {
-                    self.errorMessage = error.localizedDescription
-                    self.phase = .idle
+                errorMessage = error.localizedDescription
+                phase = .idle
+            }
+        }
+    }
+
+    /// Runs the scan TaskGroup off MainActor (static functions don't inherit actor isolation).
+    /// Downloads images, detects faces, and reports progress via callback.
+    private static func runScanBatch(
+        images: [PiwigoImage],
+        piwigoRef: PiwigoClient,
+        faceManagerRef: FaceManager,
+        albumPath: String,
+        batchOffset: Int,
+        totalAll: Int,
+        onProgress: @escaping @MainActor @Sendable (Double, String) -> Void
+    ) async -> [BatchPhotoItem] {
+        var batchItems = images.map { BatchPhotoItem(id: $0.id, image: $0) }
+        var completed = 0
+        let total = Double(batchItems.count)
+        let maxConcurrentScan = 10
+        let scanInputs = images.enumerated().map { ScanInput(index: $0.offset, image: $0.element) }
+
+        await withTaskGroup(of: (Int, Data?, Data?, Date?, String?, [DetectedFace]).self) { group in
+            var nextIdx = 0
+
+            for _ in 0..<min(maxConcurrentScan, scanInputs.count) {
+                let input = scanInputs[nextIdx]
+                nextIdx += 1
+                group.addTask {
+                    await scanOnePhoto(
+                        input: input, piwigoRef: piwigoRef,
+                        faceManagerRef: faceManagerRef, albumPath: albumPath
+                    )
+                }
+            }
+
+            for await (index, hiResData, displayData, photoDate, photoLocation, faces) in group {
+                batchItems[index].hiResData = hiResData
+                batchItems[index].displayData = displayData
+                batchItems[index].photoDate = photoDate
+                batchItems[index].photoLocation = photoLocation
+                batchItems[index].detectedFaces = faces
+                batchItems[index].identifiedNames = faces.compactMap(\.matchedName)
+
+                completed += 1
+                let globalDone = batchOffset + completed
+                let progressVal = Double(completed) / total
+                let message = "Scanned \(globalDone)/\(totalAll)..."
+                await onProgress(progressVal, message)
+
+                if nextIdx < scanInputs.count {
+                    let input = scanInputs[nextIdx]
+                    nextIdx += 1
+                    group.addTask {
+                        await scanOnePhoto(
+                            input: input, piwigoRef: piwigoRef,
+                            faceManagerRef: faceManagerRef, albumPath: albumPath
+                        )
+                    }
                 }
             }
         }
+
+        return batchItems
     }
 
     // MARK: - Build references
@@ -453,8 +485,7 @@ struct BatchRenameView: View {
         progress = 0
         progressMessage = "Naming 0/\(items.count)..."
 
-        // Capture everything needed before detaching from MainActor
-        let apiKey = claudeAPIKey
+        let claude = ClaudeClient(apiKey: claudeAPIKey)
         let refs = references.map {
             ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
         }
@@ -469,13 +500,10 @@ struct BatchRenameView: View {
             return ItemInput(index: i, data: data, names: items[i].identifiedNames, photoDate: items[i].photoDate, photoLocation: items[i].photoLocation, userNotes: notes.isEmpty ? nil : notes)
         }
 
-        Task.detached {
-            let claude = ClaudeClient(apiKey: apiKey)
+        Task {
             let total = inputs.count
             let maxConcurrent = 10
             var completed = 0
-
-            var results: [(Int, String)] = []
 
             await withTaskGroup(of: (Int, String).self) { group in
                 var nextInputIdx = 0
@@ -493,14 +521,11 @@ struct BatchRenameView: View {
                 }
 
                 for await (index, result) in group {
-                    results.append((index, result))
                     completed += 1
                     let globalDone = batchOffset + completed
-                    await MainActor.run {
-                        self.items[index].suggestedName = result
-                        self.progress = Double(completed) / Double(total)
-                        self.progressMessage = "Named \(globalDone)/\(totalImages)..."
-                    }
+                    items[index].suggestedName = result
+                    progress = Double(completed) / Double(total)
+                    progressMessage = "Named \(globalDone)/\(totalImages)..."
 
                     if nextInputIdx < inputs.count {
                         let input = inputs[nextInputIdx]
@@ -516,10 +541,8 @@ struct BatchRenameView: View {
                 }
             }
 
-            await MainActor.run {
-                self.progress = 1.0
-                self.phase = .review
-            }
+            progress = 1.0
+            phase = .review
         }
     }
 
@@ -616,6 +639,88 @@ struct BatchRenameView: View {
         return (input.index, "[Error: \(lastError?.localizedDescription ?? "Unknown error")]")
     }
 
+    // MARK: - Retry selected names
+
+    private func retrySelected() {
+        let selectedIndices = items.indices.filter { items[$0].isSelected }
+        guard !selectedIndices.isEmpty else { return }
+
+        isRetrying = true
+        errorMessage = nil
+
+        let apiKey = claudeAPIKey
+        let refs = references.map {
+            ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
+        }
+        let albumPath = album.fullPath
+        let renamedSoFar = totalRenamed
+        let combinedNotes = [userNotes, retryNotes]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ". ")
+
+        let inputs: [ItemInput] = selectedIndices.compactMap { i in
+            guard let data = items[i].displayData else { return nil }
+            return ItemInput(
+                index: i, data: data, names: items[i].identifiedNames,
+                photoDate: items[i].photoDate, photoLocation: items[i].photoLocation,
+                userNotes: combinedNotes.isEmpty ? nil : combinedNotes
+            )
+        }
+
+        Task {
+            let claude = ClaudeClient(apiKey: apiKey)
+            let total = inputs.count
+            let maxConcurrent = 10
+            var completed = 0
+
+            await withTaskGroup(of: (Int, String).self) { group in
+                var nextInputIdx = 0
+
+                for _ in 0..<min(maxConcurrent, inputs.count) {
+                    let input = inputs[nextInputIdx]
+                    nextInputIdx += 1
+                    group.addTask {
+                        await Self.generateName(
+                            claude: claude, input: input, refs: refs,
+                            albumPath: albumPath, renamedSoFar: renamedSoFar
+                        )
+                    }
+                }
+
+                for await (index, result) in group {
+                    completed += 1
+                    items[index].suggestedName = result
+                    progressMessage = "Retrying \(completed)/\(total)..."
+
+                    if nextInputIdx < inputs.count {
+                        let input = inputs[nextInputIdx]
+                        nextInputIdx += 1
+                        group.addTask {
+                            await Self.generateName(
+                                claude: claude, input: input, refs: refs,
+                                albumPath: albumPath, renamedSoFar: renamedSoFar
+                            )
+                        }
+                    }
+                }
+            }
+
+            isRetrying = false
+            progressMessage = "Retry complete — \(total) names regenerated"
+        }
+    }
+
+    // MARK: - Skip batch
+
+    private func skipToNextBatch() {
+        currentBatchIndex += 1
+        items = []
+        references = []
+        errorMessage = nil
+        startScanning()
+    }
+
     // MARK: - Phase 4: Apply
 
     private func applyRenames() {
@@ -626,49 +731,71 @@ struct BatchRenameView: View {
         progress = 0
         progressMessage = "Applying renames..."
 
-        let piwigoRef = piwigo
         let renameItems = selected.map { (id: $0.id, name: $0.suggestedName) }
 
-        Task.detached {
-            let total = Double(renameItems.count)
+        Task {
+            let total = renameItems.count
+            let maxConcurrent = 10
+            var completed = 0
             var failed = 0
 
-            for (i, item) in renameItems.enumerated() {
-                await MainActor.run {
-                    self.progress = Double(i) / total
-                    self.progressMessage = "Renaming \(i + 1)/\(Int(total))..."
+            await withTaskGroup(of: Bool.self) { group in
+                var nextIdx = 0
+
+                for _ in 0..<min(maxConcurrent, renameItems.count) {
+                    let item = renameItems[nextIdx]
+                    nextIdx += 1
+                    group.addTask {
+                        do {
+                            try await piwigo.renameImage(imageID: item.id, newName: item.name)
+                            return true
+                        } catch {
+                            return false
+                        }
+                    }
                 }
 
-                do {
-                    try await piwigoRef.renameImage(imageID: item.id, newName: item.name)
-                } catch {
-                    failed += 1
+                for await success in group {
+                    completed += 1
+                    if !success { failed += 1 }
+                    progress = Double(completed) / Double(total)
+                    progressMessage = "Renaming \(completed)/\(total)..."
+
+                    if nextIdx < renameItems.count {
+                        let item = renameItems[nextIdx]
+                        nextIdx += 1
+                        group.addTask {
+                            do {
+                                try await piwigo.renameImage(imageID: item.id, newName: item.name)
+                                return true
+                            } catch {
+                                return false
+                            }
+                        }
+                    }
                 }
             }
 
-            let renamed = renameItems.count - failed
+            let renamed = total - failed
+            totalRenamed += renamed
+            progress = 1.0
 
-            await MainActor.run {
-                self.totalRenamed += renamed
-                self.progress = 1.0
+            if failed > 0 {
+                errorMessage = "\(renamed) renamed, \(failed) failed"
+            }
 
-                if failed > 0 {
-                    self.errorMessage = "\(renamed) renamed, \(failed) failed"
-                }
-
-                // Advance to next batch or finish
-                let nextBatch = self.currentBatchIndex + 1
-                if nextBatch < self.totalBatches {
-                    self.currentBatchIndex = nextBatch
-                    self.items = []
-                    self.references = []
-                    self.errorMessage = nil
-                    self.progressMessage = "Batch \(self.currentBatchIndex) done. Starting next batch..."
-                    self.startScanning()
-                } else {
-                    self.progressMessage = "Done! \(self.totalRenamed) photos renamed across \(self.totalBatches) batch\(self.totalBatches == 1 ? "" : "es")."
-                    self.onDone()
-                }
+            // Advance to next batch or finish
+            let nextBatch = currentBatchIndex + 1
+            if nextBatch < totalBatches {
+                currentBatchIndex = nextBatch
+                items = []
+                references = []
+                errorMessage = nil
+                progressMessage = "Batch \(currentBatchIndex) done. Starting next batch..."
+                startScanning()
+            } else {
+                progressMessage = "Done! \(totalRenamed) photos renamed across \(totalBatches) batch\(totalBatches == 1 ? "" : "es")."
+                onDone()
             }
         }
     }
@@ -786,7 +913,14 @@ struct BatchFaceChip: View {
                     .lineLimit(1)
             } else {
                 Menu {
-                    ForEach(faceManager.knownNames, id: \.self) { name in
+                    if face.isAmbiguous && !face.ambiguousNames.isEmpty {
+                        ForEach(face.ambiguousNames, id: \.self) { name in
+                            Button("⭐ " + name) { onLabeled(name) }
+                        }
+                        Divider()
+                    }
+                    let suggested = Set(face.ambiguousNames)
+                    ForEach(faceManager.knownNames.filter { !suggested.contains($0) }, id: \.self) { name in
                         Button(name) { onLabeled(name) }
                     }
                     if !faceManager.knownNames.isEmpty {
@@ -794,7 +928,7 @@ struct BatchFaceChip: View {
                     }
                     Button("New name...") { showNewName = true }
                 } label: {
-                    Text("Label")
+                    Text(face.isAmbiguous ? "Uncertain" : "Label")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
