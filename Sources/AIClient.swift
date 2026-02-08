@@ -78,11 +78,7 @@ class AIClient {
             contextLines.append("GPS coordinates: \(location)")
         }
 
-        var datePrefix = ""
         if let date = photoDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyyMMdd"
-            datePrefix = formatter.string(from: date) + " "
             contextLines.append("Photo date: \(date.formatted(date: .long, time: .omitted))")
         }
 
@@ -91,14 +87,14 @@ class AIClient {
             : "\n\nAdditional context:\n" + contextLines.joined(separator: "\n")
 
         let prompt = """
-        Generate a short, descriptive title for this photo (no file extension, no date prefix). \
+        Generate a short, descriptive title for this photo (no file extension, no date prefix, no sequence number). \
         Use normal capitalization and spaces. Be specific about the subject, location, \
         activity, or scene. \
         If people's names are provided, include them naturally. \
         If the album path gives useful context (location, event, trip), incorporate it naturally. \
         If GPS coordinates are provided, use them to identify the location and include it naturally \
         (use the place name, not the coordinates). \
-        Do NOT include a date prefix — that will be added automatically. \
+        Do NOT include a date prefix or number — those will be added automatically. \
         Examples: "Sarah and John on a boat", "Kids playing in the backyard", \
         "Golden Gate Bridge on a foggy morning". Just return the title, nothing else.\(contextBlock)
         """
@@ -108,8 +104,7 @@ class AIClient {
             .text(prompt)
         ]
 
-        let title = try await sendRequest(content: content, timeout: 30)
-        return datePrefix + title
+        return try await sendRequest(content: content, timeout: 30)
     }
 
     struct PersonReference {
@@ -142,11 +137,7 @@ class AIClient {
             contextLines.append("User notes: \(notes)")
         }
 
-        var datePrefix = ""
         if let date = photoDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyyMMdd"
-            datePrefix = formatter.string(from: date) + " "
             contextLines.append("Photo date: \(date.formatted(date: .long, time: .omitted))")
         }
 
@@ -166,14 +157,14 @@ class AIClient {
         }
 
         let prompt = """
-        Generate a short, descriptive title for the LAST photo below (no file extension, no date prefix). \
+        Generate a short, descriptive title for the LAST photo below (no file extension, no date prefix, no sequence number). \
         Use normal capitalization and spaces. Be specific about the subject, location, \
         activity, or scene. \
         If people are identified (via face recognition or reference photos), include their names naturally. \
         If the album path gives useful context (location, event, trip), incorporate it naturally. \
         If GPS coordinates are provided, use them to identify the location and include it naturally \
         (use the place name, not the coordinates). \
-        Do NOT include a date prefix — that will be added automatically. \
+        Do NOT include a date prefix or number — those will be added automatically. \
         Examples: "Sarah and John on a boat", "Kids playing in the backyard", \
         "Golden Gate Bridge on a foggy morning". Just return the title, nothing else.\(referenceBlock)\(contextBlock)
         """
@@ -193,8 +184,7 @@ class AIClient {
         content.append(.image(data: imageData, mimeType: mimeType))
         content.append(.text(prompt))
 
-        let title = try await sendRequest(content: content, timeout: 60)
-        return datePrefix + title
+        return try await sendRequest(content: content, timeout: 60)
     }
 
     // MARK: - Provider dispatch

@@ -43,5 +43,9 @@ struct PhotoRenamerApp: App {
                 )
             }
         }
+
+        Settings {
+            AppSettingsView()
+        }
     }
 }

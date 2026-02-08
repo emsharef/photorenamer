@@ -24,11 +24,9 @@ struct SettingsView: View {
     @AppStorage("piwigoURL") private var piwigoURL = ""
     @AppStorage("piwigoUsername") private var piwigoUsername = ""
     @AppStorage("savedConnectionsJSON") private var savedConnectionsJSON = "[]"
-    @AppStorage("aiProvider") private var aiProviderRaw: String = AIProvider.claude.rawValue
     @AppStorage("sourceType") private var sourceTypeRaw: String = SourceType.piwigo.rawValue
 
     @State private var piwigoPassword = ""
-    @State private var aiAPIKey = ""
     @State private var isConnecting = false
     @State private var connectionStatus: String?
     @State private var connectionSuccess = false
@@ -43,10 +41,6 @@ struct SettingsView: View {
 
     private var currentSourceType: SourceType {
         SourceType(rawValue: sourceTypeRaw) ?? .piwigo
-    }
-
-    private var aiProvider: AIProvider {
-        AIProvider(rawValue: aiProviderRaw) ?? .claude
     }
 
     // MARK: Saved connections persistence
@@ -86,17 +80,14 @@ struct SettingsView: View {
                     } else {
                         localFolderSection
                     }
-                    apiKeySection
                     connectSection
                 }
                 .padding(24)
             }
         }
-        .frame(width: 500, height: 720)
+        .frame(width: 500, height: 580)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            loadAIAPIKey()
-            migrateAPIKeyFromUserDefaults()
             autoSelectSavedConnection()
         }
     }
@@ -325,38 +316,6 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: AI API Key
-
-    private var apiKeySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("AI Provider", systemImage: "key")
-                .font(.headline)
-
-            Picker("Provider", selection: $aiProviderRaw) {
-                ForEach(AIProvider.allCases) { provider in
-                    Text(provider.displayName).tag(provider.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: aiProviderRaw) { _, _ in
-                loadAIAPIKey()
-            }
-
-            HStack(spacing: 8) {
-                Image(systemName: "cpu")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
-                SecureField("API Key", text: $aiAPIKey, prompt: Text(aiProvider.placeholder))
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: aiAPIKey) { _, newValue in
-                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        KeychainHelper.save(account: aiProvider.keychainAccount, password: trimmed)
-                    }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     // MARK: Connect Button
 
     private var connectSection: some View {
@@ -412,11 +371,6 @@ struct SettingsView: View {
     private func connect() {
         isConnecting = true
         connectionStatus = nil
-
-        // Save API key to keychain
-        if !aiAPIKey.isEmpty {
-            KeychainHelper.save(account: aiProvider.keychainAccount, password: aiAPIKey)
-        }
 
         // Save connection if requested
         if saveConnection {
@@ -544,25 +498,6 @@ struct SettingsView: View {
         writeSavedConnections(connections)
         if selectedConnectionID == conn.id {
             selectedConnectionID = nil
-        }
-    }
-
-    private func loadAIAPIKey() {
-        if let key = KeychainHelper.load(account: aiProvider.keychainAccount) {
-            aiAPIKey = key
-        } else {
-            aiAPIKey = ""
-        }
-    }
-
-    private func migrateAPIKeyFromUserDefaults() {
-        let legacyKey = UserDefaults.standard.string(forKey: "claudeAPIKey") ?? ""
-        if !legacyKey.isEmpty && KeychainHelper.load(account: "claude-api-key") == nil {
-            KeychainHelper.save(account: "claude-api-key", password: legacyKey)
-            if aiProvider == .claude {
-                aiAPIKey = legacyKey
-            }
-            UserDefaults.standard.removeObject(forKey: "claudeAPIKey")
         }
     }
 

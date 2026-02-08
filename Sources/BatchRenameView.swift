@@ -34,7 +34,11 @@ struct BatchRenameView: View {
     let aiAPIKey: String
     let aiProvider: AIProvider
     @ObservedObject var faceManager: FaceManager
+    var preselectedImages: [PhotoItem]? = nil
+    var sequenceOffset: Int = 0
     var onDone: () -> Void
+
+    @AppStorage("namingFormat") private var namingFormat: String = NamingFormat.defaultTemplate
 
     @State private var phase: BatchPhase = .idle
     @State private var items: [BatchPhotoItem] = []
@@ -110,10 +114,17 @@ struct BatchRenameView: View {
             Image(systemName: "photo.stack")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("This will scan photos in \"\(album.name)\" in batches of \(batchSize), detect faces, generate AI names, and let you review before applying each batch.")
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
-                .foregroundStyle(.secondary)
+            if let preselected = preselectedImages {
+                Text("This will scan \(preselected.count) selected photos in \"\(album.name)\", detect faces, generate AI names, and let you review before applying.")
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("This will scan all photos in \"\(album.name)\" in batches of \(batchSize), detect faces, generate AI names, and let you review before applying each batch.")
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 400)
+                    .foregroundStyle(.secondary)
+            }
             Button("Start Scanning") {
                 startScanning()
             }
@@ -337,14 +348,19 @@ struct BatchRenameView: View {
             do {
                 // Fetch full image list on first batch
                 if allImages.isEmpty {
-                    progressMessage = "Fetching photo list..."
-                    let fetched = try await photoSource.fetchAllImages(albumID: album.id) { count in
-                        Task { @MainActor in
-                            self.progressMessage = "Fetching photo list... \(count) found"
+                    if let preselected = preselectedImages {
+                        allImages = preselected
+                        progressMessage = "\(preselected.count) selected photos"
+                    } else {
+                        progressMessage = "Fetching photo list..."
+                        let fetched = try await photoSource.fetchAllImages(albumID: album.id) { count in
+                            Task { @MainActor in
+                                self.progressMessage = "Fetching photo list... \(count) found"
+                            }
                         }
+                        allImages = fetched
+                        progressMessage = "Fetching photo list... \(fetched.count) photos"
                     }
-                    allImages = fetched
-                    progressMessage = "Fetching photo list... \(fetched.count) photos"
                 }
 
                 let batchImages = currentBatchImages
@@ -428,13 +444,17 @@ struct BatchRenameView: View {
         }
         let batchOffset = currentBatchIndex * batchSize
         let albumPath = album.fullPath
+        let seqOffset = sequenceOffset
         let renamedSoFar = totalRenamed
         let totalImages = allImages.count
         let notes = userNotes.trimmingCharacters(in: .whitespaces)
+        let format = namingFormat
 
         let inputs: [ItemInput] = items.indices.compactMap { i in
             guard let data = items[i].displayData else { return nil }
-            return ItemInput(index: i, data: data, names: items[i].identifiedNames, photoDate: items[i].photoDate, photoLocation: items[i].photoLocation, userNotes: notes.isEmpty ? nil : notes)
+            let fname = items[i].image.filename
+            let orig = fname.contains(".") ? String(fname[fname.startIndex..<fname.lastIndex(of: ".")!]) : fname
+            return ItemInput(index: i, data: data, names: items[i].identifiedNames, photoDate: items[i].photoDate, photoLocation: items[i].photoLocation, userNotes: notes.isEmpty ? nil : notes, originalFilename: orig)
         }
 
         Task {
@@ -452,7 +472,8 @@ struct BatchRenameView: View {
                     group.addTask {
                         await generatePhotoName(
                             client: client, input: input, refs: refs,
-                            albumPath: albumPath, renamedSoFar: renamedSoFar
+                            albumPath: albumPath, sequenceOffset: seqOffset,
+                            renamedSoFar: renamedSoFar, namingFormat: format
                         )
                     }
                 }
@@ -471,7 +492,8 @@ struct BatchRenameView: View {
                         group.addTask {
                             await generatePhotoName(
                                 client: client, input: input, refs: refs,
-                                albumPath: albumPath, renamedSoFar: renamedSoFar
+                                albumPath: albumPath, sequenceOffset: seqOffset,
+                                renamedSoFar: renamedSoFar, namingFormat: format
                             )
                         }
                     }
@@ -496,7 +518,9 @@ struct BatchRenameView: View {
             AIClient.PersonReference(name: $0.name, imageData: $0.imageData)
         }
         let albumPath = album.fullPath
+        let seqOffset = sequenceOffset
         let renamedSoFar = totalRenamed
+        let format = namingFormat
         let combinedNotes = [userNotes, retryNotes]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -504,10 +528,13 @@ struct BatchRenameView: View {
 
         let inputs: [ItemInput] = selectedIndices.compactMap { i in
             guard let data = items[i].displayData else { return nil }
+            let fname = items[i].image.filename
+            let orig = fname.contains(".") ? String(fname[fname.startIndex..<fname.lastIndex(of: ".")!]) : fname
             return ItemInput(
                 index: i, data: data, names: items[i].identifiedNames,
                 photoDate: items[i].photoDate, photoLocation: items[i].photoLocation,
-                userNotes: combinedNotes.isEmpty ? nil : combinedNotes
+                userNotes: combinedNotes.isEmpty ? nil : combinedNotes,
+                originalFilename: orig
             )
         }
 
@@ -526,7 +553,8 @@ struct BatchRenameView: View {
                     group.addTask {
                         await generatePhotoName(
                             client: client, input: input, refs: refs,
-                            albumPath: albumPath, renamedSoFar: renamedSoFar
+                            albumPath: albumPath, sequenceOffset: seqOffset,
+                            renamedSoFar: renamedSoFar, namingFormat: format
                         )
                     }
                 }
@@ -542,7 +570,8 @@ struct BatchRenameView: View {
                         group.addTask {
                             await generatePhotoName(
                                 client: client, input: input, refs: refs,
-                                albumPath: albumPath, renamedSoFar: renamedSoFar
+                                albumPath: albumPath, sequenceOffset: seqOffset,
+                                renamedSoFar: renamedSoFar, namingFormat: format
                             )
                         }
                     }
@@ -658,6 +687,7 @@ private struct ItemInput: Sendable {
     let photoDate: Date?
     let photoLocation: String?
     let userNotes: String?
+    let originalFilename: String
 }
 
 private func batchScanPhotos(
@@ -767,14 +797,16 @@ private func generatePhotoName(
     input: ItemInput,
     refs: [AIClient.PersonReference],
     albumPath: String,
-    renamedSoFar: Int
+    sequenceOffset: Int,
+    renamedSoFar: Int,
+    namingFormat: String
 ) async -> (Int, String) {
     let maxRetries = 5
     var lastError: Error?
 
     for attempt in 1...maxRetries {
         do {
-            let title = try await client.describeImageWithReferences(
+            let rawTitle = try await client.describeImageWithReferences(
                 imageData: input.data,
                 peopleNames: input.names,
                 references: refs,
@@ -783,11 +815,19 @@ private func generatePhotoName(
                 photoLocation: input.photoLocation,
                 userNotes: input.userNotes
             )
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyyMMdd"
-            let dateStr = input.photoDate.map { dateFormatter.string(from: $0) } ?? "00000000"
-            let seq = String(format: "%03d", renamedSoFar + input.index + 1)
-            return (input.index, "\(dateStr) \(seq) \(title)")
+            let seqNum = sequenceOffset + renamedSoFar + input.index + 1
+            let albumName = albumPath.components(separatedBy: "/").last
+            let formatted = NamingFormat.apply(
+                template: namingFormat,
+                date: input.photoDate,
+                seq: seqNum,
+                title: rawTitle,
+                people: input.names,
+                album: albumName,
+                original: input.originalFilename,
+                location: input.photoLocation
+            )
+            return (input.index, formatted)
         } catch {
             lastError = error
             if attempt < maxRetries {

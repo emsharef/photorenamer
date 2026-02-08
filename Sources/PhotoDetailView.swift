@@ -8,6 +8,8 @@ struct PhotoDetailView: View {
     let albumPath: String?
     @ObservedObject var faceManager: FaceManager
 
+    @AppStorage("namingFormat") private var namingFormat: String = NamingFormat.defaultTemplate
+
     @State private var imageData: Data?
     @State private var hiResData: Data?
     @State private var suggestedName: String = ""
@@ -148,6 +150,14 @@ struct PhotoDetailView: View {
         FaceManager.extractPhotoLocation(imageData: hiResData ?? imageData)
     }
 
+    private var originalFilename: String {
+        let name = image.filename
+        if let dotIndex = name.lastIndex(of: ".") {
+            return String(name[name.startIndex..<dotIndex])
+        }
+        return name
+    }
+
     private func loadImage() async {
         imageData = nil
         hiResData = nil
@@ -207,15 +217,25 @@ struct PhotoDetailView: View {
 
             for attempt in 1...maxRetries {
                 do {
-                    let name = try await client.describeImage(
+                    let rawTitle = try await client.describeImage(
                         imageData: data,
                         peopleNames: identifiedPeople,
                         albumPath: albumPath,
                         photoDate: photoDate,
                         photoLocation: photoLocation
                     )
+                    let formatted = NamingFormat.apply(
+                        template: namingFormat,
+                        date: photoDate,
+                        seq: nil,
+                        title: rawTitle,
+                        people: identifiedPeople,
+                        album: albumPath?.components(separatedBy: "/").last,
+                        original: originalFilename,
+                        location: photoLocation
+                    )
                     await MainActor.run {
-                        suggestedName = name
+                        suggestedName = formatted
                         isAnalyzing = false
                     }
                     return
