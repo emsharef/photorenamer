@@ -2,7 +2,8 @@ import SwiftUI
 
 struct AlbumBrowserView: View {
     @ObservedObject var piwigo: PiwigoClient
-    let claudeAPIKey: String
+    let aiAPIKey: String
+    let aiProvider: AIProvider
     @ObservedObject var faceManager: FaceManager
     var onDisconnect: () -> Void
 
@@ -75,7 +76,7 @@ struct AlbumBrowserView: View {
                             Label("Batch Rename", systemImage: "rectangle.and.pencil.and.ellipsis")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(claudeAPIKey.isEmpty)
+                        .disabled(aiAPIKey.isEmpty)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -102,7 +103,8 @@ struct AlbumBrowserView: View {
                         BatchRenameView(
                             album: album,
                             piwigo: piwigo,
-                            claudeAPIKey: claudeAPIKey,
+                            aiAPIKey: aiAPIKey,
+                            aiProvider: aiProvider,
                             faceManager: faceManager,
                             onDone: { showBatchRename = false }
                         )
@@ -115,7 +117,8 @@ struct AlbumBrowserView: View {
                 PhotoDetailView(
                     image: image,
                     piwigo: piwigo,
-                    claudeAPIKey: claudeAPIKey,
+                    aiAPIKey: aiAPIKey,
+                    aiProvider: aiProvider,
                     albumPath: selectedAlbum?.fullPath,
                     faceManager: faceManager
                 )

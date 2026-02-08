@@ -12,8 +12,14 @@ struct PhotoRenamerApp: App {
     @StateObject private var faceManager = FaceManager()
     @State private var isConnected = false
 
-    private var claudeAPIKey: String {
-        KeychainHelper.load(account: "claude-api-key") ?? ""
+    @AppStorage("aiProvider") private var aiProviderRaw: String = AIProvider.claude.rawValue
+
+    private var aiProvider: AIProvider {
+        AIProvider(rawValue: aiProviderRaw) ?? .claude
+    }
+
+    private var aiAPIKey: String {
+        KeychainHelper.load(account: aiProvider.keychainAccount) ?? ""
     }
 
     var body: some Scene {
@@ -21,7 +27,8 @@ struct PhotoRenamerApp: App {
             if isConnected {
                 AlbumBrowserView(
                     piwigo: piwigo,
-                    claudeAPIKey: claudeAPIKey,
+                    aiAPIKey: aiAPIKey,
+                    aiProvider: aiProvider,
                     faceManager: faceManager,
                     onDisconnect: { isConnected = false }
                 )

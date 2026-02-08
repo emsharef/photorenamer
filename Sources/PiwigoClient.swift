@@ -73,6 +73,7 @@ class PiwigoClient: ObservableObject {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = HTTPCookieStorage.shared
         config.httpCookieAcceptPolicy = .always
+        config.timeoutIntervalForResource = 60
         self.session = URLSession(configuration: config)
     }
 
@@ -291,7 +292,7 @@ class PiwigoClient: ObservableObject {
         }
     }
 
-    func downloadImage(url: String) async throws -> Data {
+    nonisolated func downloadImage(url: String) async throws -> Data {
         guard let imageURL = URL(string: url) else {
             throw PiwigoError.invalidURL
         }

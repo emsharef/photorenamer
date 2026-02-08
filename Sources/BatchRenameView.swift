@@ -31,7 +31,8 @@ struct PersonReferencePhoto: Identifiable {
 struct BatchRenameView: View {
     let album: PiwigoAlbum
     @ObservedObject var piwigo: PiwigoClient
-    let claudeAPIKey: String
+    let aiAPIKey: String
+    let aiProvider: AIProvider
     @ObservedObject var faceManager: FaceManager
     var onDone: () -> Void
 
@@ -352,7 +353,7 @@ struct BatchRenameView: View {
                 progressMessage = "Scanning 0/\(totalAll)..."
 
                 // Run heavy scan work off MainActor via static function
-                let batchItems = await Self.runScanBatch(
+                let batchItems = await batchScanPhotos(
                     images: batchImages,
                     piwigoRef: piwigo,
                     faceManagerRef: faceManager,
@@ -375,66 +376,8 @@ struct BatchRenameView: View {
         }
     }
 
-    /// Runs the scan TaskGroup off MainActor (static functions don't inherit actor isolation).
-    /// Downloads images, detects faces, and reports progress via callback.
-    private static func runScanBatch(
-        images: [PiwigoImage],
-        piwigoRef: PiwigoClient,
-        faceManagerRef: FaceManager,
-        albumPath: String,
-        batchOffset: Int,
-        totalAll: Int,
-        onProgress: @escaping @MainActor @Sendable (Double, String) -> Void
-    ) async -> [BatchPhotoItem] {
-        var batchItems = images.map { BatchPhotoItem(id: $0.id, image: $0) }
-        var completed = 0
-        let total = Double(batchItems.count)
-        let maxConcurrentScan = 10
-        let scanInputs = images.enumerated().map { ScanInput(index: $0.offset, image: $0.element) }
-
-        await withTaskGroup(of: (Int, Data?, Data?, Date?, String?, [DetectedFace]).self) { group in
-            var nextIdx = 0
-
-            for _ in 0..<min(maxConcurrentScan, scanInputs.count) {
-                let input = scanInputs[nextIdx]
-                nextIdx += 1
-                group.addTask {
-                    await scanOnePhoto(
-                        input: input, piwigoRef: piwigoRef,
-                        faceManagerRef: faceManagerRef, albumPath: albumPath
-                    )
-                }
-            }
-
-            for await (index, hiResData, displayData, photoDate, photoLocation, faces) in group {
-                batchItems[index].hiResData = hiResData
-                batchItems[index].displayData = displayData
-                batchItems[index].photoDate = photoDate
-                batchItems[index].photoLocation = photoLocation
-                batchItems[index].detectedFaces = faces
-                batchItems[index].identifiedNames = faces.compactMap(\.matchedName)
-
-                completed += 1
-                let globalDone = batchOffset + completed
-                let progressVal = Double(completed) / total
-                let message = "Scanned \(globalDone)/\(totalAll)..."
-                await onProgress(progressVal, message)
-
-                if nextIdx < scanInputs.count {
-                    let input = scanInputs[nextIdx]
-                    nextIdx += 1
-                    group.addTask {
-                        await scanOnePhoto(
-                            input: input, piwigoRef: piwigoRef,
-                            faceManagerRef: faceManagerRef, albumPath: albumPath
-                        )
-                    }
-                }
-            }
-        }
-
-        return batchItems
-    }
+    // runScanBatch, scanOnePhoto, generateName are defined as file-level
+    // private functions below this struct to avoid @MainActor inheritance from View.
 
     // MARK: - Build references
 
@@ -485,9 +428,9 @@ struct BatchRenameView: View {
         progress = 0
         progressMessage = "Naming 0/\(items.count)..."
 
-        let claude = ClaudeClient(apiKey: claudeAPIKey)
+        let client = AIClient(provider: aiProvider, apiKey: aiAPIKey)
         let refs = references.map {
-            ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
+            AIClient.PersonReference(name: $0.name, imageData: $0.imageData)
         }
         let batchOffset = currentBatchIndex * batchSize
         let albumPath = album.fullPath
@@ -513,8 +456,8 @@ struct BatchRenameView: View {
                     nextInputIdx += 1
 
                     group.addTask {
-                        await Self.generateName(
-                            claude: claude, input: input, refs: refs,
+                        await generatePhotoName(
+                            client: client, input: input, refs: refs,
                             albumPath: albumPath, renamedSoFar: renamedSoFar
                         )
                     }
@@ -532,8 +475,8 @@ struct BatchRenameView: View {
                         nextInputIdx += 1
 
                         group.addTask {
-                            await Self.generateName(
-                                claude: claude, input: input, refs: refs,
+                            await generatePhotoName(
+                                client: client, input: input, refs: refs,
                                 albumPath: albumPath, renamedSoFar: renamedSoFar
                             )
                         }
@@ -546,98 +489,7 @@ struct BatchRenameView: View {
         }
     }
 
-    private struct ScanInput {
-        let index: Int
-        let image: PiwigoImage
-    }
-
-    /// Download, extract date, and detect faces for a single photo.
-    private static func scanOnePhoto(
-        input: ScanInput,
-        piwigoRef: PiwigoClient,
-        faceManagerRef: FaceManager,
-        albumPath: String
-    ) async -> (Int, Data?, Data?, Date?, String?, [DetectedFace]) {
-        let img = input.image
-        var hiResData: Data?
-        var displayData: Data?
-
-        // Download hi-res
-        if let url = img.derivatives?.largestURL ?? img.derivatives?.displayURL {
-            hiResData = try? await piwigoRef.downloadImage(url: url)
-        }
-        // Download display
-        if let url = img.derivatives?.displayURL {
-            displayData = try? await piwigoRef.downloadImage(url: url)
-        }
-
-        let exifData = hiResData ?? displayData
-
-        // Compute photo date
-        let photoDate = FaceManager.extractPhotoDate(
-            imageData: exifData,
-            piwigoDateString: img.dateCreation,
-            albumPath: albumPath
-        )
-
-        // Extract GPS location
-        let photoLocation = FaceManager.extractPhotoLocation(imageData: exifData)
-
-        // Detect faces
-        var faces: [DetectedFace] = []
-        if let data = exifData {
-            faces = (try? await faceManagerRef.detectFaces(in: data, photoDate: photoDate)) ?? []
-        }
-
-        return (input.index, hiResData, displayData, photoDate, photoLocation, faces)
-    }
-
-    private struct ItemInput: Sendable {
-        let index: Int
-        let data: Data
-        let names: [String]
-        let photoDate: Date?
-        let photoLocation: String?
-        let userNotes: String?
-    }
-
-    /// Generate a name for a single item with retries. Static so it can run in TaskGroup.
-    private static func generateName(
-        claude: ClaudeClient,
-        input: ItemInput,
-        refs: [ClaudeClient.PersonReference],
-        albumPath: String,
-        renamedSoFar: Int
-    ) async -> (Int, String) {
-        let maxRetries = 5
-        var lastError: Error?
-
-        for attempt in 1...maxRetries {
-            do {
-                let title = try await claude.describeImageWithReferences(
-                    imageData: input.data,
-                    peopleNames: input.names,
-                    references: refs,
-                    albumPath: albumPath,
-                    photoDate: nil,
-                    photoLocation: input.photoLocation,
-                    userNotes: input.userNotes
-                )
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "yyyyMMdd"
-                let dateStr = input.photoDate.map { dateFormatter.string(from: $0) } ?? "00000000"
-                let seq = String(format: "%03d", renamedSoFar + input.index + 1)
-                return (input.index, "\(dateStr) \(seq) \(title)")
-            } catch {
-                lastError = error
-                if attempt < maxRetries {
-                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
-                }
-            }
-        }
-
-        return (input.index, "[Error: \(lastError?.localizedDescription ?? "Unknown error")]")
-    }
+    // ScanInput and ItemInput are file-level structs (see below).
 
     // MARK: - Retry selected names
 
@@ -648,9 +500,8 @@ struct BatchRenameView: View {
         isRetrying = true
         errorMessage = nil
 
-        let apiKey = claudeAPIKey
         let refs = references.map {
-            ClaudeClient.PersonReference(name: $0.name, imageData: $0.imageData)
+            AIClient.PersonReference(name: $0.name, imageData: $0.imageData)
         }
         let albumPath = album.fullPath
         let renamedSoFar = totalRenamed
@@ -669,7 +520,7 @@ struct BatchRenameView: View {
         }
 
         Task {
-            let claude = ClaudeClient(apiKey: apiKey)
+            let client = AIClient(provider: aiProvider, apiKey: aiAPIKey)
             let total = inputs.count
             let maxConcurrent = 10
             var completed = 0
@@ -681,8 +532,8 @@ struct BatchRenameView: View {
                     let input = inputs[nextInputIdx]
                     nextInputIdx += 1
                     group.addTask {
-                        await Self.generateName(
-                            claude: claude, input: input, refs: refs,
+                        await generatePhotoName(
+                            client: client, input: input, refs: refs,
                             albumPath: albumPath, renamedSoFar: renamedSoFar
                         )
                     }
@@ -697,8 +548,8 @@ struct BatchRenameView: View {
                         let input = inputs[nextInputIdx]
                         nextInputIdx += 1
                         group.addTask {
-                            await Self.generateName(
-                                claude: claude, input: input, refs: refs,
+                            await generatePhotoName(
+                                client: client, input: input, refs: refs,
                                 albumPath: albumPath, renamedSoFar: renamedSoFar
                             )
                         }
@@ -799,6 +650,163 @@ struct BatchRenameView: View {
             }
         }
     }
+}
+
+// MARK: - File-level scan/generate functions (outside View to avoid @MainActor inheritance)
+
+private struct ScanInput {
+    let index: Int
+    let image: PiwigoImage
+}
+
+private struct ItemInput: Sendable {
+    let index: Int
+    let data: Data
+    let names: [String]
+    let photoDate: Date?
+    let photoLocation: String?
+    let userNotes: String?
+}
+
+/// Runs the scan TaskGroup entirely off MainActor.
+/// Defined at file level so it has NO actor isolation.
+private func batchScanPhotos(
+    images: [PiwigoImage],
+    piwigoRef: PiwigoClient,
+    faceManagerRef: FaceManager,
+    albumPath: String,
+    batchOffset: Int,
+    totalAll: Int,
+    onProgress: @escaping @MainActor @Sendable (Double, String) -> Void
+) async -> [BatchPhotoItem] {
+    var batchItems = images.map { BatchPhotoItem(id: $0.id, image: $0) }
+    var completed = 0
+    let total = Double(batchItems.count)
+    let maxConcurrentScan = 10
+    let scanInputs = images.enumerated().map { ScanInput(index: $0.offset, image: $0.element) }
+
+    await withTaskGroup(of: (Int, Data?, Data?, Date?, String?, [DetectedFace]).self) { group in
+        var nextIdx = 0
+
+        for _ in 0..<min(maxConcurrentScan, scanInputs.count) {
+            let input = scanInputs[nextIdx]
+            nextIdx += 1
+            group.addTask {
+                let result = await scanOnePhoto(
+                    input: input, piwigoRef: piwigoRef,
+                    faceManagerRef: faceManagerRef, albumPath: albumPath
+                )
+                return result
+            }
+        }
+
+        for await (index, hiResData, displayData, photoDate, photoLocation, faces) in group {
+            batchItems[index].hiResData = hiResData
+            batchItems[index].displayData = displayData
+            batchItems[index].photoDate = photoDate
+            batchItems[index].photoLocation = photoLocation
+            batchItems[index].detectedFaces = faces
+            batchItems[index].identifiedNames = faces.compactMap(\.matchedName)
+
+            completed += 1
+            let globalDone = batchOffset + completed
+            let progressVal = Double(completed) / total
+            let message = "Scanned \(globalDone)/\(totalAll)..."
+            await onProgress(progressVal, message)
+
+            if nextIdx < scanInputs.count {
+                let input = scanInputs[nextIdx]
+                nextIdx += 1
+                group.addTask {
+                    await scanOnePhoto(
+                        input: input, piwigoRef: piwigoRef,
+                        faceManagerRef: faceManagerRef, albumPath: albumPath
+                    )
+                }
+            }
+        }
+    }
+
+    return batchItems
+}
+
+/// Download, extract date, and detect faces for a single photo.
+private func scanOnePhoto(
+    input: ScanInput,
+    piwigoRef: PiwigoClient,
+    faceManagerRef: FaceManager,
+    albumPath: String
+) async -> (Int, Data?, Data?, Date?, String?, [DetectedFace]) {
+    let img = input.image
+    var hiResData: Data?
+    var displayData: Data?
+
+    // Download hi-res
+    if let url = img.derivatives?.largestURL ?? img.derivatives?.displayURL {
+        hiResData = try? await piwigoRef.downloadImage(url: url)
+    }
+    // Download display
+    if let url = img.derivatives?.displayURL {
+        displayData = try? await piwigoRef.downloadImage(url: url)
+    }
+
+    let exifData = hiResData ?? displayData
+
+    // Compute photo date
+    let photoDate = FaceManager.extractPhotoDate(
+        imageData: exifData,
+        piwigoDateString: img.dateCreation,
+        albumPath: albumPath
+    )
+
+    // Extract GPS location
+    let photoLocation = FaceManager.extractPhotoLocation(imageData: exifData)
+
+    // Detect faces
+    var faces: [DetectedFace] = []
+    if let data = exifData {
+        faces = (try? await faceManagerRef.detectFaces(in: data, photoDate: photoDate)) ?? []
+    }
+
+    return (input.index, hiResData, displayData, photoDate, photoLocation, faces)
+}
+
+/// Generate a name for a single item with retries.
+private func generatePhotoName(
+    client: AIClient,
+    input: ItemInput,
+    refs: [AIClient.PersonReference],
+    albumPath: String,
+    renamedSoFar: Int
+) async -> (Int, String) {
+    let maxRetries = 5
+    var lastError: Error?
+
+    for attempt in 1...maxRetries {
+        do {
+            let title = try await client.describeImageWithReferences(
+                imageData: input.data,
+                peopleNames: input.names,
+                references: refs,
+                albumPath: albumPath,
+                photoDate: nil,
+                photoLocation: input.photoLocation,
+                userNotes: input.userNotes
+            )
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd"
+            let dateStr = input.photoDate.map { dateFormatter.string(from: $0) } ?? "00000000"
+            let seq = String(format: "%03d", renamedSoFar + input.index + 1)
+            return (input.index, "\(dateStr) \(seq) \(title)")
+        } catch {
+            lastError = error
+            if attempt < maxRetries {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+            }
+        }
+    }
+
+    return (input.index, "[Error: \(lastError?.localizedDescription ?? "Unknown error")]")
 }
 
 // MARK: - Face card for batch review

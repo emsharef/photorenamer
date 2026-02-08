@@ -36,7 +36,7 @@ class FaceManager: ObservableObject {
     private let cropsDir: URL
 
     /// Distance threshold for considering two faces a match (lower = stricter)
-    let matchThreshold: Float = 1.5
+    let matchThreshold: Float = 1.0
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -51,7 +51,36 @@ class FaceManager: ObservableObject {
     // MARK: - Face Detection
 
     func detectFaces(in imageData: Data, photoDate: Date? = nil) async throws -> [DetectedFace] {
-        // Use CGImageSource instead of NSImage to avoid AppKit main-thread requirements
+        // Run all synchronous Vision work on a GCD thread to avoid blocking
+        // the Swift cooperative thread pool (which has limited threads and
+        // deadlocks when all threads are occupied by blocking Vision calls).
+        let knownFacesSnapshot = self.knownFaces
+        let matchThresholdVal = self.matchThreshold
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let result = try Self.detectFacesSync(
+                        imageData: imageData,
+                        photoDate: photoDate,
+                        knownFaces: knownFacesSnapshot,
+                        matchThreshold: matchThresholdVal
+                    )
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Synchronous face detection — safe to call from any thread.
+    private static func detectFacesSync(
+        imageData: Data,
+        photoDate: Date?,
+        knownFaces: [KnownFace],
+        matchThreshold: Float
+    ) throws -> [DetectedFace] {
         guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             return []
@@ -70,7 +99,6 @@ class FaceManager: ObservableObject {
         var detected: [DetectedFace] = []
 
         for observation in observations {
-            // Convert normalized bounding box to pixel coordinates
             let box = observation.boundingBox
             let pixelRect = CGRect(
                 x: box.origin.x * imageWidth,
@@ -79,19 +107,20 @@ class FaceManager: ObservableObject {
                 height: box.height * imageHeight
             )
 
-            // Add padding around the face
             let padding: CGFloat = 0.3
             let paddedRect = pixelRect.insetBy(
                 dx: -pixelRect.width * padding,
                 dy: -pixelRect.height * padding
             ).intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
 
-            // Crop the face
             guard let croppedCG = cgImage.cropping(to: paddedRect) else { continue }
             let cropImage = NSImage(cgImage: croppedCG, size: NSSize(width: paddedRect.width, height: paddedRect.height))
 
             // Generate feature print for the crop
-            guard let featurePrint = try generateFeaturePrint(for: croppedCG) else { continue }
+            let fpRequest = VNGenerateImageFeaturePrintRequest()
+            let fpHandler = VNImageRequestHandler(cgImage: croppedCG, options: [:])
+            try fpHandler.perform([fpRequest])
+            guard let featurePrint = fpRequest.results?.first else { continue }
 
             // Try to match against known faces
             var face = DetectedFace(
@@ -100,7 +129,8 @@ class FaceManager: ObservableObject {
                 featurePrint: featurePrint
             )
 
-            if let match = findMatch(for: featurePrint, photoDate: photoDate) {
+            if let match = findMatchStatic(for: featurePrint, photoDate: photoDate,
+                                           knownFaces: knownFaces, matchThreshold: matchThreshold) {
                 if match.isAmbiguous {
                     face.isAmbiguous = true
                     face.ambiguousNames = match.ambiguousNames
@@ -115,6 +145,55 @@ class FaceManager: ObservableObject {
         }
 
         return detected
+    }
+
+    private static func findMatchStatic(
+        for featurePrint: VNFeaturePrintObservation,
+        photoDate: Date?,
+        knownFaces: [KnownFace],
+        matchThreshold: Float
+    ) -> MatchResult? {
+        var bestPerPerson: [String: Float] = [:]
+        let yearSeconds: TimeInterval = 365.25 * 24 * 3600
+        let maxAge: TimeInterval = 10 * yearSeconds
+
+        for known in knownFaces {
+            if let targetDate = photoDate, let sampleDate = known.photoDate {
+                let gap = abs(targetDate.timeIntervalSince(sampleDate))
+                if gap > maxAge { continue }
+            }
+            guard let knownPrint = known.loadFeaturePrint() else { continue }
+            var distance: Float = 0
+            do {
+                try knownPrint.computeDistance(&distance, to: featurePrint)
+            } catch { continue }
+
+            if distance < matchThreshold {
+                if bestPerPerson[known.name] == nil || distance < bestPerPerson[known.name]! {
+                    bestPerPerson[known.name] = distance
+                }
+            }
+        }
+
+        guard !bestPerPerson.isEmpty else { return nil }
+        let sorted = bestPerPerson.sorted { $0.value < $1.value }
+        let best = sorted[0]
+
+        if sorted.count >= 2 {
+            let secondBest = sorted[1]
+            let margin = best.value * 0.1
+            if secondBest.value - best.value < max(margin, 0.1) {
+                return MatchResult(
+                    name: best.key, distance: best.value,
+                    isAmbiguous: true, ambiguousNames: sorted.prefix(3).map(\.key)
+                )
+            }
+        }
+
+        return MatchResult(
+            name: best.key, distance: best.value,
+            isAmbiguous: false, ambiguousNames: []
+        )
     }
 
     // MARK: - Feature Print
@@ -172,8 +251,8 @@ class FaceManager: ObservableObject {
         // Check for ambiguity: if second-best person is within 30% of best distance
         if sorted.count >= 2 {
             let secondBest = sorted[1]
-            let margin = best.value * 0.3
-            if secondBest.value - best.value < max(margin, 0.15) {
+            let margin = best.value * 0.1
+            if secondBest.value - best.value < max(margin, 0.1) {
                 return MatchResult(
                     name: best.key,
                     distance: best.value,

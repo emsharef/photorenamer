@@ -3,7 +3,8 @@ import SwiftUI
 struct PhotoDetailView: View {
     let image: PiwigoImage
     let piwigo: PiwigoClient
-    let claudeAPIKey: String
+    let aiAPIKey: String
+    let aiProvider: AIProvider
     let albumPath: String?
     @ObservedObject var faceManager: FaceManager
 
@@ -92,15 +93,15 @@ struct PhotoDetailView: View {
                                 Label("Analyze", systemImage: "sparkles")
                             }
                         }
-                        .disabled(isAnalyzing || claudeAPIKey.isEmpty)
+                        .disabled(isAnalyzing || aiAPIKey.isEmpty)
                     }
 
                     TextField("Suggested name will appear here", text: $suggestedName)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
 
-                    if claudeAPIKey.isEmpty {
-                        Text("Set your Claude API key in settings to enable AI analysis.")
+                    if aiAPIKey.isEmpty {
+                        Text("Set your AI API key in settings to enable AI analysis.")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -201,13 +202,13 @@ struct PhotoDetailView: View {
         statusMessage = nil
 
         Task {
-            let claude = ClaudeClient(apiKey: claudeAPIKey)
+            let client = AIClient(provider: aiProvider, apiKey: aiAPIKey)
             let maxRetries = 5
             var lastError: Error?
 
             for attempt in 1...maxRetries {
                 do {
-                    let name = try await claude.describeImage(
+                    let name = try await client.describeImage(
                         imageData: data,
                         peopleNames: identifiedPeople,
                         albumPath: albumPath,
