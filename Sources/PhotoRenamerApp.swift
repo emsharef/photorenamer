@@ -11,7 +11,10 @@ struct PhotoRenamerApp: App {
     @StateObject private var piwigo = PiwigoClient()
     @StateObject private var faceManager = FaceManager()
     @State private var isConnected = false
-    @AppStorage("claudeAPIKey") private var claudeAPIKey = ""
+
+    private var claudeAPIKey: String {
+        KeychainHelper.load(account: "claude-api-key") ?? ""
+    }
 
     var body: some Scene {
         WindowGroup {
