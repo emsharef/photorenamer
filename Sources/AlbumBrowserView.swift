@@ -1,29 +1,29 @@
 import SwiftUI
 
 struct AlbumBrowserView: View {
-    @ObservedObject var piwigo: PiwigoClient
+    @ObservedObject var photoSource: PhotoSource
     let aiAPIKey: String
     let aiProvider: AIProvider
     @ObservedObject var faceManager: FaceManager
     var onDisconnect: () -> Void
 
-    @State private var selectedAlbum: PiwigoAlbum?
-    @State private var images: [PiwigoImage] = []
+    @State private var selectedAlbum: PhotoAlbum?
+    @State private var images: [PhotoItem] = []
     @State private var isLoading = false
-    @State private var selectedImage: PiwigoImage?
+    @State private var selectedImage: PhotoItem?
     @State private var showKnownFaces = false
     @State private var showBatchRename = false
 
     var body: some View {
         NavigationSplitView {
-            List(piwigo.albumTree, children: \.children, selection: $selectedAlbum) { album in
+            List(photoSource.albumTree, children: \.children, selection: $selectedAlbum) { album in
                 HStack {
                     Image(systemName: album.children != nil ? "folder" : "photo.on.rectangle")
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading) {
                         Text(album.name)
-                        if let count = album.totalImages, count > 0 {
-                            Text("\(count) photos")
+                        if album.imageCount > 0 {
+                            Text("\(album.imageCount) photos")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -67,7 +67,7 @@ struct AlbumBrowserView: View {
             } else {
                 VStack(spacing: 0) {
                     HStack {
-                        Text("\(selectedAlbum?.totalImages ?? images.count) photos")
+                        Text("\(selectedAlbum?.imageCount ?? images.count) photos")
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button {
@@ -84,7 +84,7 @@ struct AlbumBrowserView: View {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 12) {
                             ForEach(images) { image in
-                                PhotoThumbnail(image: image, piwigo: piwigo)
+                                PhotoThumbnail(image: image, photoSource: photoSource)
                                     .onTapGesture {
                                         selectedImage = image
                                     }
@@ -102,7 +102,7 @@ struct AlbumBrowserView: View {
                     if let album = selectedAlbum {
                         BatchRenameView(
                             album: album,
-                            piwigo: piwigo,
+                            photoSource: photoSource,
                             aiAPIKey: aiAPIKey,
                             aiProvider: aiProvider,
                             faceManager: faceManager,
@@ -116,7 +116,7 @@ struct AlbumBrowserView: View {
             if let image = selectedImage {
                 PhotoDetailView(
                     image: image,
-                    piwigo: piwigo,
+                    photoSource: photoSource,
                     aiAPIKey: aiAPIKey,
                     aiProvider: aiProvider,
                     albumPath: selectedAlbum?.fullPath,
@@ -134,12 +134,12 @@ struct AlbumBrowserView: View {
         }
     }
 
-    private func loadImages(for album: PiwigoAlbum) {
+    private func loadImages(for album: PhotoAlbum) {
         isLoading = true
         selectedImage = nil
         Task {
             do {
-                let fetched = try await piwigo.fetchImages(albumID: album.id)
+                let fetched = try await photoSource.fetchImages(albumID: album.id)
                 await MainActor.run {
                     images = fetched
                     isLoading = false
@@ -154,8 +154,8 @@ struct AlbumBrowserView: View {
 }
 
 struct PhotoThumbnail: View {
-    let image: PiwigoImage
-    let piwigo: PiwigoClient
+    let image: PhotoItem
+    let photoSource: PhotoSource
     @State private var thumbnailData: Data?
 
     var body: some View {
@@ -185,22 +185,13 @@ struct PhotoThumbnail: View {
     }
 
     private func loadThumbnail() async {
-        guard let url = image.derivatives?.square?.url
-            ?? image.derivatives?.thumb?.url else { return }
+        let url = image.thumbnailURL
+        guard !url.isEmpty else { return }
         do {
-            let data = try await piwigo.downloadImage(url: url)
+            let data = try await photoSource.downloadImage(url: url, maxDimension: 300)
             await MainActor.run {
                 self.thumbnailData = data
             }
         } catch {}
-    }
-}
-
-extension PiwigoAlbum: Hashable {
-    static func == (lhs: PiwigoAlbum, rhs: PiwigoAlbum) -> Bool {
-        lhs.id == rhs.id
-    }
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
     }
 }

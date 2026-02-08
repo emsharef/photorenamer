@@ -8,8 +8,14 @@ struct SavedConnection: Codable, Identifiable {
     var name: String
     var serverURL: String
     var username: String
+    var sourceType: String = SourceType.piwigo.rawValue
+    var folderPath: String?
 
     var keychainPasswordAccount: String { "piwigo-\(id.uuidString)" }
+
+    var resolvedSourceType: SourceType {
+        SourceType(rawValue: sourceType) ?? .piwigo
+    }
 }
 
 // MARK: - SettingsView
@@ -19,6 +25,7 @@ struct SettingsView: View {
     @AppStorage("piwigoUsername") private var piwigoUsername = ""
     @AppStorage("savedConnectionsJSON") private var savedConnectionsJSON = "[]"
     @AppStorage("aiProvider") private var aiProviderRaw: String = AIProvider.claude.rawValue
+    @AppStorage("sourceType") private var sourceTypeRaw: String = SourceType.piwigo.rawValue
 
     @State private var piwigoPassword = ""
     @State private var aiAPIKey = ""
@@ -29,9 +36,14 @@ struct SettingsView: View {
     @State private var connectionName = ""
     @State private var selectedConnectionID: UUID?
     @State private var showDeleteConfirmation: UUID?
+    @State private var selectedFolderPath: String = ""
 
-    @ObservedObject var piwigo: PiwigoClient
+    @ObservedObject var photoSource: PhotoSource
     var onConnected: () -> Void
+
+    private var currentSourceType: SourceType {
+        SourceType(rawValue: sourceTypeRaw) ?? .piwigo
+    }
 
     private var aiProvider: AIProvider {
         AIProvider(rawValue: aiProviderRaw) ?? .claude
@@ -44,6 +56,10 @@ struct SettingsView: View {
             guard let data = savedConnectionsJSON.data(using: .utf8) else { return [] }
             return (try? JSONDecoder().decode([SavedConnection].self, from: data)) ?? []
         }
+    }
+
+    private var filteredSavedConnections: [SavedConnection] {
+        savedConnections.filter { $0.resolvedSourceType == currentSourceType }
     }
 
     private func writeSavedConnections(_ connections: [SavedConnection]) {
@@ -61,17 +77,22 @@ struct SettingsView: View {
             Divider()
             ScrollView {
                 VStack(spacing: 20) {
-                    if !savedConnections.isEmpty {
+                    sourceTypePicker
+                    if !filteredSavedConnections.isEmpty {
                         savedConnectionsSection
                     }
-                    connectionFormSection
+                    if currentSourceType == .piwigo {
+                        connectionFormSection
+                    } else {
+                        localFolderSection
+                    }
                     apiKeySection
                     connectSection
                 }
                 .padding(24)
             }
         }
-        .frame(width: 500, height: 580)
+        .frame(width: 500, height: 720)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             loadAIAPIKey()
@@ -92,22 +113,15 @@ struct SettingsView: View {
             Text("PhotoRenamer")
                 .font(.title)
                 .fontWeight(.bold)
-            Text("Connect to your Piwigo server to get started")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
     }
 
     private var appIconImage: Image {
-        // Try loading from the .icns file next to the executable or in the project
         let candidates = [
-            // When running from .app bundle
             Bundle.main.resourcePath.map { "\($0)/AppIcon.icns" },
-            // When running as raw executable during development
             Bundle.main.executableURL?.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("AppIcon.icns").path,
-            // Fallback: project root relative paths
             "AppIcon.icns",
         ].compactMap { $0 }
 
@@ -117,8 +131,29 @@ struct SettingsView: View {
             }
         }
 
-        // Final fallback: use the running app's icon
         return Image(nsImage: NSApp.applicationIconImage)
+    }
+
+    // MARK: Source Type Picker
+
+    private var sourceTypePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Photo Source", systemImage: "photo.stack")
+                .font(.headline)
+
+            Picker("Source", selection: $sourceTypeRaw) {
+                ForEach(SourceType.allCases) { source in
+                    Text(source.displayName).tag(source.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: sourceTypeRaw) { _, _ in
+                selectedConnectionID = nil
+                connectionStatus = nil
+                autoSelectSavedConnection()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Saved Connections
@@ -130,7 +165,7 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
 
             VStack(spacing: 4) {
-                ForEach(savedConnections) { conn in
+                ForEach(filteredSavedConnections) { conn in
                     savedConnectionRow(conn)
                 }
             }
@@ -140,8 +175,9 @@ struct SettingsView: View {
 
     private func savedConnectionRow(_ conn: SavedConnection) -> some View {
         let isSelected = selectedConnectionID == conn.id
+        let isLocal = conn.resolvedSourceType == .local
         return HStack(spacing: 10) {
-            Image(systemName: "server.rack")
+            Image(systemName: isLocal ? "folder" : "server.rack")
                 .foregroundStyle(isSelected ? .white : .blue)
                 .frame(width: 24)
 
@@ -149,10 +185,17 @@ struct SettingsView: View {
                 Text(conn.name)
                     .fontWeight(.medium)
                     .foregroundStyle(isSelected ? .white : .primary)
-                Text("\(conn.username)@\(conn.serverURL)")
-                    .font(.caption)
-                    .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
-                    .lineLimit(1)
+                if isLocal {
+                    Text(conn.folderPath ?? "")
+                        .font(.caption)
+                        .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                        .lineLimit(1)
+                } else {
+                    Text("\(conn.username)@\(conn.serverURL)")
+                        .font(.caption)
+                        .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
@@ -172,7 +215,7 @@ struct SettingsView: View {
                 Button("Delete", role: .destructive) { deleteConnection(conn) }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Remove \"\(conn.name)\" and its saved password?")
+                Text("Remove \"\(conn.name)\"?")
             }
         }
         .padding(.horizontal, 12)
@@ -185,7 +228,7 @@ struct SettingsView: View {
         .onTapGesture { selectConnection(conn) }
     }
 
-    // MARK: Connection Form
+    // MARK: Connection Form (Piwigo)
 
     private var connectionFormSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -227,6 +270,52 @@ struct SettingsView: View {
 
                 if saveConnection {
                     TextField("Connection name", text: $connectionName, prompt: Text("My Server"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 200)
+                }
+            }
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Local Folder Section
+
+    private var localFolderSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Local Folder", systemImage: "folder")
+                .font(.headline)
+
+            HStack(spacing: 8) {
+                Image(systemName: "folder.badge.plus")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                if selectedFolderPath.isEmpty {
+                    Text("No folder selected")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(selectedFolderPath)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+
+                Spacer()
+
+                Button("Choose Folder...") {
+                    chooseFolder()
+                }
+            }
+
+            HStack(spacing: 12) {
+                Toggle(isOn: $saveConnection) {
+                    Text("Save folder bookmark")
+                        .font(.callout)
+                }
+                .toggleStyle(.checkbox)
+
+                if saveConnection {
+                    TextField("Bookmark name", text: $connectionName, prompt: Text("My Photos"))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 200)
                 }
@@ -278,7 +367,7 @@ struct SettingsView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isConnecting ? "Connecting..." : "Connect")
+                    Text(isConnecting ? "Connecting..." : (currentSourceType == .local ? "Open Folder" : "Connect"))
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
@@ -286,7 +375,7 @@ struct SettingsView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(piwigoURL.isEmpty || piwigoUsername.isEmpty || piwigoPassword.isEmpty || isConnecting)
+            .disabled(connectDisabled)
 
             if let status = connectionStatus {
                 Label(status, systemImage: connectionSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -296,7 +385,29 @@ struct SettingsView: View {
         }
     }
 
+    private var connectDisabled: Bool {
+        if isConnecting { return true }
+        if currentSourceType == .piwigo {
+            return piwigoURL.isEmpty || piwigoUsername.isEmpty || piwigoPassword.isEmpty
+        } else {
+            return selectedFolderPath.isEmpty
+        }
+    }
+
     // MARK: Actions
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Select a folder containing photos"
+        panel.prompt = "Select"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            selectedFolderPath = url.path
+        }
+    }
 
     private func connect() {
         isConnecting = true
@@ -312,16 +423,45 @@ struct SettingsView: View {
             saveCurrentConnection()
         }
 
+        if currentSourceType == .piwigo {
+            connectPiwigo()
+        } else {
+            connectLocal()
+        }
+    }
+
+    private func connectPiwigo() {
         Task {
             do {
-                try await piwigo.login(
+                try await photoSource.connectPiwigo(
                     serverURL: piwigoURL,
                     username: piwigoUsername,
                     password: piwigoPassword
                 )
-                try await piwigo.fetchAlbums()
                 await MainActor.run {
-                    connectionStatus = "Connected! Found \(piwigo.allAlbums.count) albums."
+                    connectionStatus = "Connected! Found \(photoSource.allAlbums.count) albums."
+                    connectionSuccess = true
+                    isConnecting = false
+                    onConnected()
+                }
+            } catch {
+                await MainActor.run {
+                    connectionStatus = error.localizedDescription
+                    connectionSuccess = false
+                    isConnecting = false
+                }
+            }
+        }
+    }
+
+    private func connectLocal() {
+        let resolvedURL = URL(fileURLWithPath: selectedFolderPath)
+
+        Task {
+            do {
+                try await photoSource.connectLocal(folderURL: resolvedURL)
+                await MainActor.run {
+                    connectionStatus = "Loaded! Found \(photoSource.allAlbums.count) folders."
                     connectionSuccess = true
                     isConnecting = false
                     onConnected()
@@ -338,14 +478,19 @@ struct SettingsView: View {
 
     private func selectConnection(_ conn: SavedConnection) {
         selectedConnectionID = conn.id
-        piwigoURL = conn.serverURL
-        piwigoUsername = conn.username
-        if let pw = KeychainHelper.load(account: conn.keychainPasswordAccount) {
-            piwigoPassword = pw
+        if conn.resolvedSourceType == .local {
+            selectedFolderPath = conn.folderPath ?? ""
+            sourceTypeRaw = SourceType.local.rawValue
         } else {
-            piwigoPassword = ""
+            piwigoURL = conn.serverURL
+            piwigoUsername = conn.username
+            sourceTypeRaw = SourceType.piwigo.rawValue
+            if let pw = KeychainHelper.load(account: conn.keychainPasswordAccount) {
+                piwigoPassword = pw
+            } else {
+                piwigoPassword = ""
+            }
         }
-        // Pre-fill save checkbox off since it's already saved
         saveConnection = false
         connectionName = conn.name
     }
@@ -353,22 +498,38 @@ struct SettingsView: View {
     private func saveCurrentConnection() {
         var connections = savedConnections
 
-        // If we selected an existing connection, update it
         if let selectedID = selectedConnectionID,
            let idx = connections.firstIndex(where: { $0.id == selectedID }) {
-            connections[idx].serverURL = piwigoURL
-            connections[idx].username = piwigoUsername
+            if currentSourceType == .local {
+                connections[idx].folderPath = selectedFolderPath
+                connections[idx].sourceType = SourceType.local.rawValue
+            } else {
+                connections[idx].serverURL = piwigoURL
+                connections[idx].username = piwigoUsername
+                KeychainHelper.save(account: connections[idx].keychainPasswordAccount, password: piwigoPassword)
+            }
             if !connectionName.isEmpty {
                 connections[idx].name = connectionName
             }
-            KeychainHelper.save(account: connections[idx].keychainPasswordAccount, password: piwigoPassword)
         } else {
-            // Create new
-            let name = connectionName.isEmpty ? piwigoURL : connectionName
-            let conn = SavedConnection(name: name, serverURL: piwigoURL, username: piwigoUsername)
-            KeychainHelper.save(account: conn.keychainPasswordAccount, password: piwigoPassword)
-            connections.append(conn)
-            selectedConnectionID = conn.id
+            if currentSourceType == .local {
+                let name = connectionName.isEmpty ? URL(fileURLWithPath: selectedFolderPath).lastPathComponent : connectionName
+                let conn = SavedConnection(
+                    name: name,
+                    serverURL: "",
+                    username: "",
+                    sourceType: SourceType.local.rawValue,
+                    folderPath: selectedFolderPath
+                )
+                connections.append(conn)
+                selectedConnectionID = conn.id
+            } else {
+                let name = connectionName.isEmpty ? piwigoURL : connectionName
+                let conn = SavedConnection(name: name, serverURL: piwigoURL, username: piwigoUsername)
+                KeychainHelper.save(account: conn.keychainPasswordAccount, password: piwigoPassword)
+                connections.append(conn)
+                selectedConnectionID = conn.id
+            }
         }
 
         writeSavedConnections(connections)
@@ -377,7 +538,9 @@ struct SettingsView: View {
     private func deleteConnection(_ conn: SavedConnection) {
         var connections = savedConnections
         connections.removeAll { $0.id == conn.id }
-        KeychainHelper.delete(account: conn.keychainPasswordAccount)
+        if conn.resolvedSourceType == .piwigo {
+            KeychainHelper.delete(account: conn.keychainPasswordAccount)
+        }
         writeSavedConnections(connections)
         if selectedConnectionID == conn.id {
             selectedConnectionID = nil
@@ -403,10 +566,8 @@ struct SettingsView: View {
         }
     }
 
-    /// Pre-selects the saved connection if there's only one, filling in the fields
-    /// but letting the user review and click Connect themselves.
     private func autoSelectSavedConnection() {
-        let connections = savedConnections
+        let connections = filteredSavedConnections
         guard connections.count == 1, let conn = connections.first else { return }
         selectConnection(conn)
     }

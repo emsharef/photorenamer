@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct PhotoDetailView: View {
-    let image: PiwigoImage
-    let piwigo: PiwigoClient
+    let image: PhotoItem
+    let photoSource: PhotoSource
     let aiAPIKey: String
     let aiProvider: AIProvider
     let albumPath: String?
@@ -73,7 +73,7 @@ struct PhotoDetailView: View {
                     Text(image.displayName)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.secondary)
-                    Text("File: \(image.file)")
+                    Text("File: \(image.filename)")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -139,7 +139,7 @@ struct PhotoDetailView: View {
     private var photoDate: Date? {
         FaceManager.extractPhotoDate(
             imageData: hiResData ?? imageData,
-            piwigoDateString: image.dateCreation,
+            piwigoDateString: image.dateCreated,
             albumPath: albumPath
         )
     }
@@ -155,19 +155,19 @@ struct PhotoDetailView: View {
         statusMessage = nil
         detectedFaces = []
 
-        // Load display image (medium)
-        if let url = image.derivatives?.displayURL {
-            if let data = try? await piwigo.downloadImage(url: url) {
-                await MainActor.run { self.imageData = data }
-            }
+        // For local files, thumbnailURL == imageURL == file path, load once
+        let mainURL = image.imageURL
+        guard !mainURL.isEmpty else { return }
+
+        if let data = try? await photoSource.downloadImage(url: mainURL, maxDimension: 1600) {
+            await MainActor.run { self.imageData = data }
         }
 
-        // Load hi-res image for face detection in background
-        if let url = image.derivatives?.largestURL,
-           url != image.derivatives?.displayURL {
-            if let data = try? await piwigo.downloadImage(url: url) {
-                await MainActor.run { self.hiResData = data }
-            }
+        // For Piwigo, also try hi-res if different from display URL
+        if photoSource.sourceType == .piwigo && image.thumbnailURL != image.imageURL {
+            // imageURL is already the largest; thumbnailURL is the display one
+            // We already loaded imageURL as imageData; also set hiResData
+            await MainActor.run { self.hiResData = self.imageData }
         }
     }
 
@@ -190,7 +190,6 @@ struct PhotoDetailView: View {
         }
     }
 
-    /// Names of people identified in the current photo's detected faces
     private var identifiedPeople: [String] {
         let names = detectedFaces.compactMap(\.matchedName)
         return Array(Set(names)).sorted()
@@ -246,7 +245,7 @@ struct PhotoDetailView: View {
 
         Task {
             do {
-                try await piwigo.renameImage(imageID: image.id, newName: suggestedName)
+                try await photoSource.renameImage(id: image.id, newTitle: suggestedName)
                 await MainActor.run {
                     statusMessage = "Renamed successfully!"
                     isError = false

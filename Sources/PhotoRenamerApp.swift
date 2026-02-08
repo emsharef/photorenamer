@@ -8,7 +8,7 @@ struct PhotoRenamerApp: App {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
-    @StateObject private var piwigo = PiwigoClient()
+    @StateObject private var photoSource = PhotoSource()
     @StateObject private var faceManager = FaceManager()
     @State private var isConnected = false
 
@@ -26,16 +26,19 @@ struct PhotoRenamerApp: App {
         WindowGroup {
             if isConnected {
                 AlbumBrowserView(
-                    piwigo: piwigo,
+                    photoSource: photoSource,
                     aiAPIKey: aiAPIKey,
                     aiProvider: aiProvider,
                     faceManager: faceManager,
-                    onDisconnect: { isConnected = false }
+                    onDisconnect: {
+                        photoSource.disconnect()
+                        isConnected = false
+                    }
                 )
                 .frame(minWidth: 900, minHeight: 600)
             } else {
                 SettingsView(
-                    piwigo: piwigo,
+                    photoSource: photoSource,
                     onConnected: { isConnected = true }
                 )
             }
