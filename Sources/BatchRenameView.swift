@@ -944,35 +944,36 @@ struct BatchFaceChip: View {
                         .stroke(face.matchedName != nil ? Color.green : Color.orange, lineWidth: 2)
                 )
 
-            if let name = face.matchedName {
-                Text(name)
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                    .lineLimit(1)
-            } else {
-                Menu {
-                    if face.isAmbiguous && !face.ambiguousNames.isEmpty {
-                        ForEach(face.ambiguousNames, id: \.self) { name in
-                            Button("⭐ " + name) { onLabeled(name) }
-                        }
-                        Divider()
+            Menu {
+                if face.isAmbiguous && !face.ambiguousNames.isEmpty {
+                    ForEach(face.ambiguousNames, id: \.self) { name in
+                        Button("⭐ " + name) { onLabeled(name) }
                     }
-                    let suggested = Set(face.ambiguousNames)
-                    ForEach(faceManager.knownNames.filter { !suggested.contains($0) }, id: \.self) { name in
-                        Button(name) { onLabeled(name) }
-                    }
-                    if !faceManager.knownNames.isEmpty {
-                        Divider()
-                    }
-                    Button("New name...") { showNewName = true }
-                } label: {
+                    Divider()
+                }
+                let currentName = face.matchedName ?? ""
+                let suggested = Set(face.ambiguousNames)
+                ForEach(faceManager.knownNames.filter { $0 != currentName && !suggested.contains($0) }, id: \.self) { name in
+                    Button(name) { onLabeled(name) }
+                }
+                if !faceManager.knownNames.isEmpty {
+                    Divider()
+                }
+                Button("New name...") { showNewName = true }
+            } label: {
+                if let name = face.matchedName {
+                    Text(name)
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .lineLimit(1)
+                } else {
                     Text(face.isAmbiguous ? "Uncertain" : "Label")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-                .menuStyle(.button)
-                .fixedSize()
             }
+            .menuStyle(.button)
+            .fixedSize()
         }
         .popover(isPresented: $showNewName) {
             VStack(spacing: 8) {
