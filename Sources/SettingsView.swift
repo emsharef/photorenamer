@@ -66,27 +66,40 @@ struct SettingsView: View {
     // MARK: Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerSection
-            Divider()
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+                .ignoresSafeArea()
+
             ScrollView {
-                VStack(spacing: 20) {
-                    sourceTypePicker
-                    if !filteredSavedConnections.isEmpty {
-                        savedConnectionsSection
+                VStack(spacing: 0) {
+                    headerSection
+
+                    VStack(spacing: 20) {
+                        sourceTypePicker
+                        if !filteredSavedConnections.isEmpty {
+                            savedConnectionsSection
+                        }
+                        if currentSourceType == .piwigo {
+                            connectionFormSection
+                        } else {
+                            localFolderSection
+                        }
+                        connectSection
                     }
-                    if currentSourceType == .piwigo {
-                        connectionFormSection
-                    } else {
-                        localFolderSection
-                    }
-                    connectSection
+                    .padding(28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(nsColor: .controlBackgroundColor))
+                            .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+                    )
+                    .frame(maxWidth: 480)
                 }
-                .padding(24)
+                .padding(.vertical, 40)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity)
             }
         }
-        .frame(width: 500, height: 580)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(minWidth: 500, minHeight: 500)
         .onAppear {
             autoSelectSavedConnection()
         }
@@ -95,17 +108,20 @@ struct SettingsView: View {
     // MARK: Header
 
     private var headerSection: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             appIconImage
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 80, height: 80)
+                .frame(width: 96, height: 96)
             Text("PhotoRenamer")
-                .font(.title)
+                .font(.largeTitle)
                 .fontWeight(.bold)
+            Text("AI-powered photo renaming")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 16)
+        .padding(.bottom, 24)
         .frame(maxWidth: .infinity)
     }
 

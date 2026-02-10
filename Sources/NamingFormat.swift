@@ -8,6 +8,7 @@ import Foundation
 ///   {seq}            — sequence number, zero-padded to 3 digits (default)
 ///   {seq:N}          — sequence number, zero-padded to N digits
 ///   {title}          — AI-generated description
+///   {title_}         — AI-generated description, lowercase with underscores
 ///   {people}         — identified people names, joined naturally
 ///   {album}          — album or folder name
 ///   {original}       — original filename without extension
@@ -36,6 +37,9 @@ enum NamingFormat {
 
         // Replace {seq} or {seq:N}
         result = replaceSeqToken(in: result, seq: seq)
+
+        // Replace {title_} (must come before {title} to avoid partial match)
+        result = result.replacingOccurrences(of: "{title_}", with: snakeCase(title))
 
         // Replace {title}
         result = result.replacingOccurrences(of: "{title}", with: title)
@@ -83,6 +87,13 @@ enum NamingFormat {
             original: "IMG_4523",
             location: "Lake Tahoe"
         )
+    }
+
+    /// Convert to lowercase with underscores: "Sarah and John on a boat" → "sarah_and_john_on_a_boat"
+    private static func snakeCase(_ text: String) -> String {
+        text.lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
     }
 
     /// Join people names naturally: "Sarah", "Sarah and John", "Sarah, John, and Mike"

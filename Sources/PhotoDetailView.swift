@@ -7,6 +7,7 @@ struct PhotoDetailView: View {
     let aiProvider: AIProvider
     let albumPath: String?
     @ObservedObject var faceManager: FaceManager
+    var onRenamed: (() -> Void)? = nil
 
     @AppStorage("namingFormat") private var namingFormat: String = NamingFormat.defaultTemplate
 
@@ -270,6 +271,7 @@ struct PhotoDetailView: View {
                     statusMessage = "Renamed successfully!"
                     isError = false
                     isRenaming = false
+                    onRenamed?()
                 }
             } catch {
                 await MainActor.run {

@@ -75,21 +75,25 @@ struct AlbumBrowserView: View {
                     .foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 0) {
-                    HStack {
-                        if selectedImageIDs.count > 1 {
-                            Text("\(selectedImageIDs.count) of \(images.count) selected")
-                                .foregroundStyle(.secondary)
-                            Button("Clear") {
-                                selectedImageIDs.removeAll()
-                                anchorIndex = nil
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            if selectedImageIDs.count > 1 {
+                                Text("\(selectedImageIDs.count) of \(images.count) selected")
+                                    .foregroundStyle(.secondary)
+                                Button("Clear") {
+                                    selectedImageIDs.removeAll()
+                                    anchorIndex = nil
+                                }
+                                .font(.callout)
+                            } else {
+                                Text("\(images.count) photos")
+                                    .foregroundStyle(.secondary)
                             }
-                            .font(.callout)
-                        } else {
-                            Text("\(images.count) photos")
-                                .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        batchRenameButton
+                        HStack {
+                            Spacer()
+                            batchRenameButton
+                        }
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -123,7 +127,11 @@ struct AlbumBrowserView: View {
                     }
                 }
                 .navigationTitle(selectedAlbum?.name ?? "Photos")
-                .sheet(isPresented: $showBatchRename) {
+                .sheet(isPresented: $showBatchRename, onDismiss: {
+                    if let album = selectedAlbum {
+                        loadImages(for: album)
+                    }
+                }) {
                     batchRenameSheet
                 }
             }
@@ -135,7 +143,12 @@ struct AlbumBrowserView: View {
                     aiAPIKey: aiAPIKey,
                     aiProvider: aiProvider,
                     albumPath: selectedAlbum?.fullPath,
-                    faceManager: faceManager
+                    faceManager: faceManager,
+                    onRenamed: {
+                        if let album = selectedAlbum {
+                            loadImages(for: album)
+                        }
+                    }
                 )
             } else {
                 Text("Select a photo to rename")

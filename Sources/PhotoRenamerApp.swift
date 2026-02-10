@@ -36,16 +36,35 @@ struct PhotoRenamerApp: App {
                     }
                 )
                 .frame(minWidth: 900, minHeight: 600)
+                .onAppear {
+                    if let window = NSApplication.shared.windows.first {
+                        let screen = window.screen ?? NSScreen.main
+                        let screenSize = screen?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
+                        let width = min(1280, screenSize.width * 0.85)
+                        let height = min(860, screenSize.height * 0.85)
+                        window.setContentSize(NSSize(width: width, height: height))
+                        window.center()
+                    }
+                }
             } else {
                 SettingsView(
                     photoSource: photoSource,
                     onConnected: { isConnected = true }
                 )
+                .frame(minWidth: 500, minHeight: 500)
+                .onAppear {
+                    if let window = NSApplication.shared.windows.first {
+                        let size = NSSize(width: 580, height: 680)
+                        window.setContentSize(size)
+                        window.center()
+                    }
+                }
             }
         }
 
         Settings {
             AppSettingsView()
+                .environmentObject(faceManager)
         }
     }
 }

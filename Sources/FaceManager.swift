@@ -36,7 +36,16 @@ class FaceManager: ObservableObject {
     private let cropsDir: URL
 
     /// Distance threshold for considering two faces a match (lower = stricter)
-    let matchThreshold: Float = 1.0
+    var matchThreshold: Float {
+        let stored = UserDefaults.standard.float(forKey: "faceMatchThreshold")
+        return stored > 0 ? stored : 1.0
+    }
+
+    /// Max year gap for face sample matching (samples older than this are skipped)
+    var dateRangeYears: Double {
+        let stored = UserDefaults.standard.double(forKey: "faceDateRangeYears")
+        return stored > 0 ? stored : 10.0
+    }
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -56,6 +65,7 @@ class FaceManager: ObservableObject {
         // deadlocks when all threads are occupied by blocking Vision calls).
         let knownFacesSnapshot = self.knownFaces
         let matchThresholdVal = self.matchThreshold
+        let dateRangeVal = self.dateRangeYears
 
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -64,7 +74,8 @@ class FaceManager: ObservableObject {
                         imageData: imageData,
                         photoDate: photoDate,
                         knownFaces: knownFacesSnapshot,
-                        matchThreshold: matchThresholdVal
+                        matchThreshold: matchThresholdVal,
+                        dateRangeYears: dateRangeVal
                     )
                     continuation.resume(returning: result)
                 } catch {
@@ -79,7 +90,8 @@ class FaceManager: ObservableObject {
         imageData: Data,
         photoDate: Date?,
         knownFaces: [KnownFace],
-        matchThreshold: Float
+        matchThreshold: Float,
+        dateRangeYears: Double = 10.0
     ) throws -> [DetectedFace] {
         guard let source = CGImageSourceCreateWithData(imageData as CFData, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
@@ -130,7 +142,8 @@ class FaceManager: ObservableObject {
             )
 
             if let match = findMatchStatic(for: featurePrint, photoDate: photoDate,
-                                           knownFaces: knownFaces, matchThreshold: matchThreshold) {
+                                           knownFaces: knownFaces, matchThreshold: matchThreshold,
+                                           dateRangeYears: dateRangeYears) {
                 if match.isAmbiguous {
                     face.isAmbiguous = true
                     face.ambiguousNames = match.ambiguousNames
@@ -151,11 +164,12 @@ class FaceManager: ObservableObject {
         for featurePrint: VNFeaturePrintObservation,
         photoDate: Date?,
         knownFaces: [KnownFace],
-        matchThreshold: Float
+        matchThreshold: Float,
+        dateRangeYears: Double = 10.0
     ) -> MatchResult? {
         var bestPerPerson: [String: Float] = [:]
         let yearSeconds: TimeInterval = 365.25 * 24 * 3600
-        let maxAge: TimeInterval = 10 * yearSeconds
+        let maxAge: TimeInterval = dateRangeYears * yearSeconds
 
         for known in knownFaces {
             if let targetDate = photoDate, let sampleDate = known.photoDate {
@@ -219,7 +233,7 @@ class FaceManager: ObservableObject {
         var bestPerPerson: [String: Float] = [:]
 
         let yearSeconds: TimeInterval = 365.25 * 24 * 3600
-        let maxAge: TimeInterval = 10 * yearSeconds
+        let maxAge: TimeInterval = dateRangeYears * yearSeconds
 
         for known in knownFaces {
             // Skip samples outside +-10 years if both dates are available

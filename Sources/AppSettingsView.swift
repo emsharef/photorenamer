@@ -12,8 +12,13 @@ struct AppSettingsView: View {
                 .tabItem {
                     Label("Naming Format", systemImage: "textformat")
                 }
+
+            FaceRecognitionTab()
+                .tabItem {
+                    Label("Face Recognition", systemImage: "person.crop.rectangle")
+                }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 500, height: 420)
     }
 }
 
@@ -80,6 +85,7 @@ private struct NamingFormatTab: View {
 
     private let tokenDocs: [(token: String, description: String, example: String)] = [
         ("{title}", "AI-generated description", "Sarah and John on a boat"),
+        ("{title_}", "Title, lowercase with underscores", "sarah_and_john_on_a_boat"),
         ("{date}", "Photo date as YYYYMMDD", "20251112"),
         ("{date:FORMAT}", "Photo date with custom format", "{date:yyyy-MM-dd} → 2025-11-12"),
         ("{seq}", "Sequence number, 3 digits", "001"),
@@ -118,43 +124,115 @@ private struct NamingFormatTab: View {
             }
 
             Section {
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
-                    GridRow {
-                        Text("Token")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Text("Description")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Text("Example")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Divider()
-                        .gridCellColumns(3)
-
+                List {
                     ForEach(tokenDocs, id: \.token) { doc in
-                        GridRow {
+                        HStack(spacing: 8) {
                             Text(doc.token)
                                 .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.primary)
+                                .frame(width: 100, alignment: .leading)
                             Text(doc.description)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            Spacer()
                             Text(doc.example)
-                                .font(.system(.caption, design: .monospaced))
+                                .font(.system(.caption2, design: .monospaced))
                                 .foregroundStyle(.tertiary)
                         }
                     }
                 }
+                .listStyle(.plain)
+                .frame(height: 150)
             } header: {
                 Text("Available Tokens")
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+// MARK: - Face Recognition Tab
+
+private struct FaceRecognitionTab: View {
+    @EnvironmentObject var faceManager: FaceManager
+    @AppStorage("faceMatchThreshold") private var matchThreshold: Double = 1.0
+    @AppStorage("faceDateRangeYears") private var dateRangeYears: Double = 10.0
+    @State private var showKnownFaces = false
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(faceManager.knownFaces.count) samples, \(faceManager.knownNames.count) people")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Manage Known Faces...") {
+                        showKnownFaces = true
+                    }
+                }
+            } header: {
+                Text("Known Faces Database")
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Match Threshold")
+                        Spacer()
+                        Text(String(format: "%.1f", matchThreshold))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $matchThreshold, in: 0.5...2.0, step: 0.1)
+                    HStack {
+                        Text("Stricter")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        Text("More lenient")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Date Range")
+                        Spacer()
+                        Text("\(Int(dateRangeYears)) years")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $dateRangeYears, in: 1...30, step: 1)
+                    Text("Face samples older than this range (relative to the photo) are ignored during matching.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                HStack {
+                    Button("Reset to Defaults") {
+                        matchThreshold = 1.0
+                        dateRangeYears = 10.0
+                    }
+                    .font(.callout)
+                }
+            } header: {
+                Text("Recognition Thresholds")
+            }
+        }
+        .formStyle(.grouped)
+        .sheet(isPresented: $showKnownFaces) {
+            VStack {
+                HStack {
+                    Spacer()
+                    Button("Done") { showKnownFaces = false }
+                        .padding()
+                }
+                KnownFacesView(faceManager: faceManager)
+            }
+            .frame(minWidth: 500, minHeight: 400)
+        }
     }
 }
