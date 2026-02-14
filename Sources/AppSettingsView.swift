@@ -13,12 +13,17 @@ struct AppSettingsView: View {
                     Label("Naming Format", systemImage: "textformat")
                 }
 
+            BatchOptionsTab()
+                .tabItem {
+                    Label("Batch Options", systemImage: "rectangle.and.pencil.and.ellipsis")
+                }
+
             FaceRecognitionTab()
                 .tabItem {
                     Label("Face Recognition", systemImage: "person.crop.rectangle")
                 }
         }
-        .frame(width: 500, height: 420)
+        .frame(width: 500, height: 450)
     }
 }
 
@@ -124,26 +129,70 @@ private struct NamingFormatTab: View {
             }
 
             Section {
-                List {
-                    ForEach(tokenDocs, id: \.token) { doc in
-                        HStack(spacing: 8) {
-                            Text(doc.token)
-                                .font(.system(.caption, design: .monospaced))
-                                .frame(width: 100, alignment: .leading)
-                            Text(doc.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(doc.example)
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(tokenDocs, id: \.token) { doc in
+                            HStack(spacing: 8) {
+                                Text(doc.token)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .frame(width: 100, alignment: .leading)
+                                Text(doc.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(doc.example)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if doc.token != tokenDocs.last?.token {
+                                Divider()
+                            }
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.plain)
-                .frame(height: 150)
+                .frame(height: 140)
             } header: {
                 Text("Available Tokens")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Batch Options Tab
+
+private struct BatchOptionsTab: View {
+    @AppStorage("batchSize") private var batchSize: Int = 50
+    @AppStorage("yoloMode") private var yoloMode: Bool = false
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    Text("Batch Size")
+                    Spacer()
+                    TextField("", value: $batchSize, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                    Stepper("", value: $batchSize, in: 10...500, step: 10)
+                        .labelsHidden()
+                }
+                Text("Photos are processed in batches of this size. Smaller batches use less memory; larger batches require fewer rounds.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } header: {
+                Text("Batch Processing")
+            }
+
+            Section {
+                Toggle("YOLO Mode", isOn: $yoloMode)
+                Text("Skip face review and name review steps — scan, generate names, and apply them automatically without pausing for confirmation.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } header: {
+                Text("Auto Mode")
             }
         }
         .formStyle(.grouped)

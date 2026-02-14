@@ -39,6 +39,8 @@ struct BatchRenameView: View {
     var onDone: () -> Void
 
     @AppStorage("namingFormat") private var namingFormat: String = NamingFormat.defaultTemplate
+    @AppStorage("batchSize") private var batchSizeSetting: Int = 50
+    @AppStorage("yoloMode") private var yoloMode: Bool = false
 
     @State private var phase: BatchPhase = .idle
     @State private var items: [BatchPhotoItem] = []
@@ -54,7 +56,7 @@ struct BatchRenameView: View {
     @State private var allImages: [PhotoItem] = []
     @State private var currentBatchIndex: Int = 0
     @State private var totalRenamed: Int = 0
-    private let batchSize = 50
+    private var batchSize: Int { max(10, batchSizeSetting) }
 
     private var totalBatches: Int {
         guard !allImages.isEmpty else { return 0 }
@@ -383,7 +385,11 @@ struct BatchRenameView: View {
                 items = batchItems
                 progress = 1.0
                 buildInitialReferences()
-                phase = .faceReview
+                if yoloMode {
+                    startGenerating()
+                } else {
+                    phase = .faceReview
+                }
             } catch {
                 errorMessage = error.localizedDescription
                 phase = .idle
@@ -501,7 +507,11 @@ struct BatchRenameView: View {
             }
 
             progress = 1.0
-            phase = .review
+            if yoloMode {
+                applyRenames()
+            } else {
+                phase = .review
+            }
         }
     }
 
