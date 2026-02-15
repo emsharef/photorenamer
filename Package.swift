@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "PhotoRenamer",
+    name: "PhoDoo",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "PhotoRenamer",
+            name: "PhoDoo",
             path: "Sources"
         )
     ]

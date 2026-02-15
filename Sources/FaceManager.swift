@@ -49,7 +49,7 @@ class FaceManager: ObservableObject {
 
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        storageDir = appSupport.appendingPathComponent("PhotoRenamer", isDirectory: true)
+        storageDir = appSupport.appendingPathComponent("PhoDoo", isDirectory: true)
         dbFile = storageDir.appendingPathComponent("known_faces.json")
         cropsDir = storageDir.appendingPathComponent("face_crops", isDirectory: true)
 

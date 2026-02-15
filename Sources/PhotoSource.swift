@@ -67,6 +67,7 @@ class PhotoSource: ObservableObject {
 
     private(set) var piwigoClient: PiwigoClient?
     private(set) var localClient: LocalPhotoClient?
+    private(set) var securityScopedURL: URL?
 
     init() {
         // Clients created on demand when connecting
@@ -94,7 +95,7 @@ class PhotoSource: ObservableObject {
         }
     }
 
-    func connectLocal(folderURL: URL) async throws {
+    func connectLocal(folderURL: URL, securityScoped: Bool = false) async throws {
         let client = LocalPhotoClient(folderURL: folderURL)
         try await client.scanFolder()
 
@@ -103,6 +104,9 @@ class PhotoSource: ObservableObject {
         Self.collectAlbums(tree, into: &lookup)
 
         await MainActor.run {
+            // Release any previous security-scoped access
+            self.securityScopedURL?.stopAccessingSecurityScopedResource()
+            self.securityScopedURL = securityScoped ? folderURL : nil
             self.localClient = client
             self.piwigoClient = nil
             self.sourceType = .local
@@ -114,6 +118,8 @@ class PhotoSource: ObservableObject {
     }
 
     func disconnect() {
+        securityScopedURL?.stopAccessingSecurityScopedResource()
+        securityScopedURL = nil
         piwigoClient = nil
         localClient = nil
         albumTree = []

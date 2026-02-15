@@ -1,7 +1,8 @@
 .build/
 .swiftpm/
-*.xcodeproj/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
 xcuserdata/
 DerivedData/
 .DS_Store
-PhotoRenamer.app/
+PhoDoo.app/

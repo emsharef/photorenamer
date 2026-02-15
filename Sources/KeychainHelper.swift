@@ -1,11 +1,11 @@
 import Foundation
 
-/// File-based credential storage in ~/Library/Application Support/PhotoRenamer/
+/// File-based credential storage in ~/Library/Application Support/PhoDoo/
 /// Used instead of the system Keychain because the app runs as an unsigned executable.
 enum KeychainHelper {
     private static var storageURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("PhotoRenamer")
+        let dir = appSupport.appendingPathComponent("PhoDoo")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("credentials.json")
     }

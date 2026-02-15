@@ -1,0 +1,380 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4B0000000000000000000001 /* AIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000001 /* AIClient.swift */; };
+		4B0000000000000000000002 /* AlbumBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000002 /* AlbumBrowserView.swift */; };
+		4B0000000000000000000003 /* AppSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000003 /* AppSettingsView.swift */; };
+		4B0000000000000000000004 /* BatchRenameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000004 /* BatchRenameView.swift */; };
+		4B0000000000000000000005 /* FaceLabelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000005 /* FaceLabelView.swift */; };
+		4B0000000000000000000006 /* FaceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000006 /* FaceManager.swift */; };
+		4B0000000000000000000007 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000007 /* KeychainHelper.swift */; };
+		4B0000000000000000000008 /* LocalPhotoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000008 /* LocalPhotoClient.swift */; };
+		4B0000000000000000000009 /* NamingFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000009 /* NamingFormat.swift */; };
+		4B000000000000000000000A /* PhotoDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A000000000000000000000A /* PhotoDetailView.swift */; };
+		4B000000000000000000000B /* PhoDooApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A000000000000000000000B /* PhoDooApp.swift */; };
+		4B000000000000000000000C /* PhotoSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A000000000000000000000C /* PhotoSource.swift */; };
+		4B000000000000000000000D /* PiwigoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A000000000000000000000D /* PiwigoClient.swift */; };
+		4B000000000000000000000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A000000000000000000000E /* SettingsView.swift */; };
+		4D0000000000000000000002 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4D0000000000000000000001 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		4A0000000000000000000001 /* AIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIClient.swift; sourceTree = "<group>"; };
+		4A0000000000000000000002 /* AlbumBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumBrowserView.swift; sourceTree = "<group>"; };
+		4A0000000000000000000003 /* AppSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsView.swift; sourceTree = "<group>"; };
+		4A0000000000000000000004 /* BatchRenameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchRenameView.swift; sourceTree = "<group>"; };
+		4A0000000000000000000005 /* FaceLabelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceLabelView.swift; sourceTree = "<group>"; };
+		4A0000000000000000000006 /* FaceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceManager.swift; sourceTree = "<group>"; };
+		4A0000000000000000000007 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		4A0000000000000000000008 /* LocalPhotoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoClient.swift; sourceTree = "<group>"; };
+		4A0000000000000000000009 /* NamingFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NamingFormat.swift; sourceTree = "<group>"; };
+		4A000000000000000000000A /* PhotoDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDetailView.swift; sourceTree = "<group>"; };
+		4A000000000000000000000B /* PhoDooApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoDooApp.swift; sourceTree = "<group>"; };
+		4A000000000000000000000C /* PhotoSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSource.swift; sourceTree = "<group>"; };
+		4A000000000000000000000D /* PiwigoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiwigoClient.swift; sourceTree = "<group>"; };
+		4A000000000000000000000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		4D0000000000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		4D0000000000000000000003 /* PhoDoo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhoDoo.entitlements; sourceTree = SOURCE_ROOT; };
+		4D0000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = SOURCE_ROOT; };
+		4E0000000000000000000001 /* PhoDoo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoDoo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4F0000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4C0000000000000000000003 = {
+			isa = PBXGroup;
+			children = (
+				4C0000000000000000000001 /* Sources */,
+				4D0000000000000000000001 /* Assets.xcassets */,
+				4D0000000000000000000003 /* PhoDoo.entitlements */,
+				4D0000000000000000000004 /* Info.plist */,
+				4C0000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4C0000000000000000000001 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				4A0000000000000000000001 /* AIClient.swift */,
+				4A0000000000000000000002 /* AlbumBrowserView.swift */,
+				4A0000000000000000000003 /* AppSettingsView.swift */,
+				4A0000000000000000000004 /* BatchRenameView.swift */,
+				4A0000000000000000000005 /* FaceLabelView.swift */,
+				4A0000000000000000000006 /* FaceManager.swift */,
+				4A0000000000000000000007 /* KeychainHelper.swift */,
+				4A0000000000000000000008 /* LocalPhotoClient.swift */,
+				4A0000000000000000000009 /* NamingFormat.swift */,
+				4A000000000000000000000A /* PhotoDetailView.swift */,
+				4A000000000000000000000B /* PhoDooApp.swift */,
+				4A000000000000000000000C /* PhotoSource.swift */,
+				4A000000000000000000000D /* PiwigoClient.swift */,
+				4A000000000000000000000E /* SettingsView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		4C0000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4E0000000000000000000001 /* PhoDoo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4F0000000000000000000001 /* PhoDoo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B0000000000000000000006 /* Build configuration list for PBXNativeTarget "PhoDoo" */;
+			buildPhases = (
+				4F0000000000000000000002 /* Sources */,
+				4F0000000000000000000003 /* Resources */,
+				4F0000000000000000000004 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PhoDoo;
+			productName = PhoDoo;
+			productReference = 4E0000000000000000000001 /* PhoDoo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5A0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					4F0000000000000000000001 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = 5B0000000000000000000005 /* Build configuration list for PBXProject "PhoDoo" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 4C0000000000000000000003;
+			productRefGroup = 4C0000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4F0000000000000000000001 /* PhoDoo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4F0000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D0000000000000000000002 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4F0000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4B0000000000000000000001 /* AIClient.swift in Sources */,
+				4B0000000000000000000002 /* AlbumBrowserView.swift in Sources */,
+				4B0000000000000000000003 /* AppSettingsView.swift in Sources */,
+				4B0000000000000000000004 /* BatchRenameView.swift in Sources */,
+				4B0000000000000000000005 /* FaceLabelView.swift in Sources */,
+				4B0000000000000000000006 /* FaceManager.swift in Sources */,
+				4B0000000000000000000007 /* KeychainHelper.swift in Sources */,
+				4B0000000000000000000008 /* LocalPhotoClient.swift in Sources */,
+				4B0000000000000000000009 /* NamingFormat.swift in Sources */,
+				4B000000000000000000000A /* PhotoDetailView.swift in Sources */,
+				4B000000000000000000000B /* PhoDooApp.swift in Sources */,
+				4B000000000000000000000C /* PhotoSource.swift in Sources */,
+				4B000000000000000000000D /* PiwigoClient.swift in Sources */,
+				4B000000000000000000000E /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5B0000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		5B0000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		5B0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PhoDoo.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6CJGU3CFS;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.esharef.PhoDoo;
+				PRODUCT_NAME = PhoDoo;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5B0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PhoDoo.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C6CJGU3CFS;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.esharef.PhoDoo;
+				PRODUCT_NAME = PhoDoo;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5B0000000000000000000005 /* Build configuration list for PBXProject "PhoDoo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B0000000000000000000001 /* Debug */,
+				5B0000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5B0000000000000000000006 /* Build configuration list for PBXNativeTarget "PhoDoo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B0000000000000000000003 /* Debug */,
+				5B0000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5A0000000000000000000001 /* Project object */;
+}

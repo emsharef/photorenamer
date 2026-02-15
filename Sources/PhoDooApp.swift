@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct PhotoRenamerApp: App {
+struct PhoDooApp: App {
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)

@@ -10,6 +10,7 @@ struct SavedConnection: Codable, Identifiable {
     var username: String
     var sourceType: String = SourceType.piwigo.rawValue
     var folderPath: String?
+    var folderBookmark: Data?
 
     var keychainPasswordAccount: String { "piwigo-\(id.uuidString)" }
 
@@ -35,6 +36,7 @@ struct SettingsView: View {
     @State private var selectedConnectionID: UUID?
     @State private var showDeleteConfirmation: UUID?
     @State private var selectedFolderPath: String = ""
+    @State private var selectedFolderBookmark: Data?
 
     @ObservedObject var photoSource: PhotoSource
     var onConnected: () -> Void
@@ -114,7 +116,7 @@ struct SettingsView: View {
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 96, height: 96)
-            Text("PhotoRenamer")
+            Text("PhoDoo")
                 .font(.largeTitle)
                 .fontWeight(.bold)
             Text("AI-powered photo renaming")
@@ -381,6 +383,17 @@ struct SettingsView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             selectedFolderPath = url.path
+            // Create security-scoped bookmark for sandbox persistence
+            do {
+                selectedFolderBookmark = try url.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            } catch {
+                print("Failed to create bookmark: \(error)")
+                selectedFolderBookmark = nil
+            }
         }
     }
 
@@ -425,11 +438,59 @@ struct SettingsView: View {
     }
 
     private func connectLocal() {
-        let resolvedURL = URL(fileURLWithPath: selectedFolderPath)
+        var resolvedURL: URL
+        var didStartAccess = false
+
+        // Try resolving from security-scoped bookmark first
+        if let bookmarkData = selectedFolderBookmark {
+            do {
+                var isStale = false
+                resolvedURL = try URL(
+                    resolvingBookmarkData: bookmarkData,
+                    options: .withSecurityScope,
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+                guard resolvedURL.startAccessingSecurityScopedResource() else {
+                    connectionStatus = "Failed to access folder (security scope denied)"
+                    connectionSuccess = false
+                    isConnecting = false
+                    return
+                }
+                didStartAccess = true
+
+                // Re-create bookmark if stale
+                if isStale {
+                    do {
+                        selectedFolderBookmark = try resolvedURL.bookmarkData(
+                            options: .withSecurityScope,
+                            includingResourceValuesForKeys: nil,
+                            relativeTo: nil
+                        )
+                        // Update saved connection with refreshed bookmark
+                        if let selectedID = selectedConnectionID {
+                            var connections = savedConnections
+                            if let idx = connections.firstIndex(where: { $0.id == selectedID }) {
+                                connections[idx].folderBookmark = selectedFolderBookmark
+                                writeSavedConnections(connections)
+                            }
+                        }
+                    } catch {
+                        print("Failed to refresh stale bookmark: \(error)")
+                    }
+                }
+            } catch {
+                // Bookmark resolution failed — fall back to plain path
+                resolvedURL = URL(fileURLWithPath: selectedFolderPath)
+            }
+        } else {
+            // No bookmark — use plain path (backward compat)
+            resolvedURL = URL(fileURLWithPath: selectedFolderPath)
+        }
 
         Task {
             do {
-                try await photoSource.connectLocal(folderURL: resolvedURL)
+                try await photoSource.connectLocal(folderURL: resolvedURL, securityScoped: didStartAccess)
                 await MainActor.run {
                     connectionStatus = "Loaded! Found \(photoSource.allAlbums.count) folders."
                     connectionSuccess = true
@@ -437,6 +498,9 @@ struct SettingsView: View {
                     onConnected()
                 }
             } catch {
+                if didStartAccess {
+                    resolvedURL.stopAccessingSecurityScopedResource()
+                }
                 await MainActor.run {
                     connectionStatus = error.localizedDescription
                     connectionSuccess = false
@@ -450,6 +514,7 @@ struct SettingsView: View {
         selectedConnectionID = conn.id
         if conn.resolvedSourceType == .local {
             selectedFolderPath = conn.folderPath ?? ""
+            selectedFolderBookmark = conn.folderBookmark
             sourceTypeRaw = SourceType.local.rawValue
         } else {
             piwigoURL = conn.serverURL
@@ -472,6 +537,7 @@ struct SettingsView: View {
            let idx = connections.firstIndex(where: { $0.id == selectedID }) {
             if currentSourceType == .local {
                 connections[idx].folderPath = selectedFolderPath
+                connections[idx].folderBookmark = selectedFolderBookmark
                 connections[idx].sourceType = SourceType.local.rawValue
             } else {
                 connections[idx].serverURL = piwigoURL
@@ -489,7 +555,8 @@ struct SettingsView: View {
                     serverURL: "",
                     username: "",
                     sourceType: SourceType.local.rawValue,
-                    folderPath: selectedFolderPath
+                    folderPath: selectedFolderPath,
+                    folderBookmark: selectedFolderBookmark
                 )
                 connections.append(conn)
                 selectedConnectionID = conn.id
