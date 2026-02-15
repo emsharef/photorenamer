@@ -11,6 +11,8 @@ struct PhoDooApp: App {
     @StateObject private var photoSource = PhotoSource()
     @StateObject private var faceManager = FaceManager()
     @State private var isConnected = false
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var showOnboarding = false
 
     @AppStorage("aiProvider") private var aiProviderRaw: String = AIProvider.claude.rawValue
 
@@ -58,6 +60,15 @@ struct PhoDooApp: App {
                         window.setContentSize(size)
                         window.center()
                     }
+                    if !hasSeenOnboarding {
+                        showOnboarding = true
+                    }
+                }
+                .sheet(isPresented: $showOnboarding) {
+                    OnboardingView(hasSeenOnboarding: $hasSeenOnboarding)
+                }
+                .onChange(of: hasSeenOnboarding) { _, newValue in
+                    if newValue { showOnboarding = false }
                 }
             }
         }
